@@ -163,3 +163,12 @@ func Not(p predicate.Spec) predicate.Spec {
 		p(s.Not())
 	})
 }
+
+// Not applies the not operator on the given predicate.
+func CustomPredicate(f func(builder sql.PredicateBuilder)) predicate.Spec {
+	return predicate.Spec(func(s *sql.Selector) {
+		s.Where(sql.P().CustomPredicate(func(builder *sql.Builder) {
+			f(sql.NewPredicateBuilder(builder))
+		}))
+	})
+}
