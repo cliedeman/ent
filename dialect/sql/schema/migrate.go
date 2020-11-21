@@ -603,6 +603,11 @@ type sqlDialect interface {
 	alterColumns(table string, add, modify, drop []*Column) sql.Queries
 }
 
+type sqlImporter interface {
+	sqlDialect
+	allTables(context.Context, dialect.Tx, []string) ([]*Table, error)
+}
+
 type preparer interface {
 	prepare(context.Context, dialect.Tx, *changes, string) error
 }

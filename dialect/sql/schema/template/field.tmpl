@@ -1,0 +1,14 @@
+{{/*
+Copyright 2019-present Facebook Inc. All rights reserved.
+This source code is licensed under the Apache 2.0 license found
+in the LICENSE file in the root directory of this source tree.
+*/}}
+{{- define "field" -}}
+    field.{{ $.FieldType }}("{{ $.Name }}")
+        {{- if .Column.Default -}}.Default({{ .Column.Default }}).{{- end -}}
+        {{- if .Optional }}.Optional(){{- end -}}
+        {{- if .Column.Nullable }}.Nillable(){{- end -}}
+        {{- if .Column.Unique }}.Unique(){{- end -}}
+        {{- if .HasSchemaType -}}.SchemaType({{ .SchemaType }}){{- end -}}
+        {{- if .StorageKey -}}.StorageKey("{{ .StorageKey }}"){{- end -}},
+{{- end }}

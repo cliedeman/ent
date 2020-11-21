@@ -457,3 +457,44 @@ func seqfunc(defaults string) bool {
 	}
 	return false
 }
+
+func (d *Postgres) allTables(ctx context.Context, tx dialect.Tx, i []string) ([]*Table, error) {
+	rows := &sql.Rows{}
+	query, args := sql.Dialect(dialect.Postgres).
+		Select("table_name").
+		From(sql.Table("INFORMATION_SCHEMA.TABLES").Unquote()).
+		Where(sql.And(
+			sql.EQ("table_schema", sql.Raw("CURRENT_SCHEMA()")),
+			sql.EQ("table_type", "BASE TABLE"),
+		)).Query()
+	if err := tx.Query(ctx, query, args, rows); err != nil {
+		return nil, fmt.Errorf("postgres: reading tables %v", err)
+	}
+
+	tableNames := make([]string, 0)
+
+	// Call `Close` in cases of failures (`Close` is idempotent).
+	defer rows.Close()
+	for rows.Next() {
+		var tableName string
+		if err := rows.Scan(&tableName); err != nil {
+			return nil, fmt.Errorf("scanning table name: %v", err)
+		}
+
+		tableNames = append(tableNames, tableName)
+	}
+
+	tables := make([]*Table, 0)
+
+	for _, tableName := range tableNames {
+		table, err := d.table(ctx, tx, tableName)
+
+		if err != nil {
+			return nil, err
+		}
+
+		tables = append(tables, table)
+	}
+
+	return tables, nil
+}

@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/facebook/ent/dialect/sql/schema"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -129,6 +131,48 @@ func main() {
 			cmd.Flags().StringVar(&cfg.Target, "target", "", "target directory for codegen")
 			cmd.Flags().StringSliceVarP(&features, "feature", "", nil, "extend codegen with additional features")
 			cmd.Flags().StringSliceVarP(&templates, "template", "", nil, "external templates to execute")
+			return cmd
+		}(),
+		func() *cobra.Command {
+			var (
+				connectionString string
+				pkgName          string
+				dialect          string
+				ignoredTables    []string
+				cmd              = &cobra.Command{
+					Use:   "import [flags] path",
+					Short: "import as existing database",
+					Args:  cobra.ExactArgs(1),
+					Run: func(cmd *cobra.Command, args []string) {
+						importer, err := schema.NewImporter(
+							dialect, connectionString, pkgName, args[0],
+							schema.WithIgnoredTables(ignoredTables))
+
+						if err != nil {
+							log.Fatalf("failed to create importer: %v", err)
+						}
+
+						defer importer.Close()
+
+						err = createDir(path.Join(args[0], pkgName))
+
+						if err != nil {
+							log.Fatalf("failed to create schema folder: %v", err)
+						}
+
+						err = importer.Import(cmd.Context())
+
+						if err != nil {
+							log.Fatalf("failed to run import: %v", err)
+						}
+					},
+				}
+			)
+			// TODO: copyright header flag
+			cmd.Flags().StringVar(&connectionString, "connection-string", "", "")
+			cmd.Flags().StringVar(&dialect, "dialect", "", "")
+			cmd.Flags().StringVar(&pkgName, "pkg-name", "schema", "Project package name, will be suffixed with /ent/schema")
+			cmd.Flags().StringSliceVarP(&ignoredTables, "ignoredTables", "", nil, "")
 			return cmd
 		}(),
 	)
