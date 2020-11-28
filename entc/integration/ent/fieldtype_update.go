@@ -1004,6 +1004,26 @@ func (ftu *FieldTypeUpdate) ClearMAC() *FieldTypeUpdate {
 	return ftu
 }
 
+// SetTstzrange sets the tstzrange field.
+func (ftu *FieldTypeUpdate) SetTstzrange(s string) *FieldTypeUpdate {
+	ftu.mutation.SetTstzrange(s)
+	return ftu
+}
+
+// SetNillableTstzrange sets the tstzrange field if the given value is not nil.
+func (ftu *FieldTypeUpdate) SetNillableTstzrange(s *string) *FieldTypeUpdate {
+	if s != nil {
+		ftu.SetTstzrange(*s)
+	}
+	return ftu
+}
+
+// ClearTstzrange clears the value of tstzrange.
+func (ftu *FieldTypeUpdate) ClearTstzrange() *FieldTypeUpdate {
+	ftu.mutation.ClearTstzrange()
+	return ftu
+}
+
 // Mutation returns the FieldTypeMutation object of the builder.
 func (ftu *FieldTypeUpdate) Mutation() *FieldTypeMutation {
 	return ftu.mutation
@@ -1882,6 +1902,19 @@ func (ftu *FieldTypeUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
 			Type:   field.TypeString,
 			Column: fieldtype.FieldMAC,
+		})
+	}
+	if value, ok := ftu.mutation.Tstzrange(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeString,
+			Value:  value,
+			Column: fieldtype.FieldTstzrange,
+		})
+	}
+	if ftu.mutation.TstzrangeCleared() {
+		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
+			Type:   field.TypeString,
+			Column: fieldtype.FieldTstzrange,
 		})
 	}
 	if n, err = sqlgraph.UpdateNodes(ctx, ftu.driver, _spec); err != nil {
@@ -2871,6 +2904,26 @@ func (ftuo *FieldTypeUpdateOne) ClearMAC() *FieldTypeUpdateOne {
 	return ftuo
 }
 
+// SetTstzrange sets the tstzrange field.
+func (ftuo *FieldTypeUpdateOne) SetTstzrange(s string) *FieldTypeUpdateOne {
+	ftuo.mutation.SetTstzrange(s)
+	return ftuo
+}
+
+// SetNillableTstzrange sets the tstzrange field if the given value is not nil.
+func (ftuo *FieldTypeUpdateOne) SetNillableTstzrange(s *string) *FieldTypeUpdateOne {
+	if s != nil {
+		ftuo.SetTstzrange(*s)
+	}
+	return ftuo
+}
+
+// ClearTstzrange clears the value of tstzrange.
+func (ftuo *FieldTypeUpdateOne) ClearTstzrange() *FieldTypeUpdateOne {
+	ftuo.mutation.ClearTstzrange()
+	return ftuo
+}
+
 // Mutation returns the FieldTypeMutation object of the builder.
 func (ftuo *FieldTypeUpdateOne) Mutation() *FieldTypeMutation {
 	return ftuo.mutation
@@ -3747,6 +3800,19 @@ func (ftuo *FieldTypeUpdateOne) sqlSave(ctx context.Context) (_node *FieldType, 
 		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
 			Type:   field.TypeString,
 			Column: fieldtype.FieldMAC,
+		})
+	}
+	if value, ok := ftuo.mutation.Tstzrange(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeString,
+			Value:  value,
+			Column: fieldtype.FieldTstzrange,
+		})
+	}
+	if ftuo.mutation.TstzrangeCleared() {
+		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
+			Type:   field.TypeString,
+			Column: fieldtype.FieldTstzrange,
 		})
 	}
 	_node = &FieldType{config: ftuo.config}

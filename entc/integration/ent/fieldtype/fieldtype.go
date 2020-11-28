@@ -109,6 +109,8 @@ const (
 	FieldRole = "role"
 	// FieldMAC holds the string denoting the mac field in the database.
 	FieldMAC = "mac"
+	// FieldTstzrange holds the string denoting the tstzrange field in the database.
+	FieldTstzrange = "tstzrange"
 
 	// Table holds the table name of the fieldtype in the database.
 	Table = "field_types"
@@ -163,6 +165,7 @@ var Columns = []string{
 	FieldNullFloat,
 	FieldRole,
 	FieldMAC,
+	FieldTstzrange,
 }
 
 // ForeignKeys holds the SQL foreign-keys that are owned by the FieldType type.

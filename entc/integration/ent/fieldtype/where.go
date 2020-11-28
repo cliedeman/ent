@@ -411,6 +411,13 @@ func MAC(v schema.MAC) predicate.FieldType {
 	})
 }
 
+// Tstzrange applies equality check predicate on the "tstzrange" field. It's identical to TstzrangeEQ.
+func Tstzrange(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.EQ(s.C(FieldTstzrange), v))
+	})
+}
+
 // IntEQ applies the EQ predicate on the "int" field.
 func IntEQ(v int) predicate.FieldType {
 	return predicate.FieldType(func(s *sql.Selector) {
@@ -4442,6 +4449,131 @@ func MACContainsFold(v schema.MAC) predicate.FieldType {
 	vc := v.String()
 	return predicate.FieldType(func(s *sql.Selector) {
 		s.Where(sql.ContainsFold(s.C(FieldMAC), vc))
+	})
+}
+
+// TstzrangeEQ applies the EQ predicate on the "tstzrange" field.
+func TstzrangeEQ(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.EQ(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeNEQ applies the NEQ predicate on the "tstzrange" field.
+func TstzrangeNEQ(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.NEQ(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeIn applies the In predicate on the "tstzrange" field.
+func TstzrangeIn(vs ...string) predicate.FieldType {
+	v := make([]interface{}, len(vs))
+	for i := range v {
+		v[i] = vs[i]
+	}
+	return predicate.FieldType(func(s *sql.Selector) {
+		// if not arguments were provided, append the FALSE constants,
+		// since we can't apply "IN ()". This will make this predicate falsy.
+		if len(v) == 0 {
+			s.Where(sql.False())
+			return
+		}
+		s.Where(sql.In(s.C(FieldTstzrange), v...))
+	})
+}
+
+// TstzrangeNotIn applies the NotIn predicate on the "tstzrange" field.
+func TstzrangeNotIn(vs ...string) predicate.FieldType {
+	v := make([]interface{}, len(vs))
+	for i := range v {
+		v[i] = vs[i]
+	}
+	return predicate.FieldType(func(s *sql.Selector) {
+		// if not arguments were provided, append the FALSE constants,
+		// since we can't apply "IN ()". This will make this predicate falsy.
+		if len(v) == 0 {
+			s.Where(sql.False())
+			return
+		}
+		s.Where(sql.NotIn(s.C(FieldTstzrange), v...))
+	})
+}
+
+// TstzrangeGT applies the GT predicate on the "tstzrange" field.
+func TstzrangeGT(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.GT(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeGTE applies the GTE predicate on the "tstzrange" field.
+func TstzrangeGTE(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.GTE(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeLT applies the LT predicate on the "tstzrange" field.
+func TstzrangeLT(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.LT(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeLTE applies the LTE predicate on the "tstzrange" field.
+func TstzrangeLTE(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.LTE(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeContains applies the Contains predicate on the "tstzrange" field.
+func TstzrangeContains(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.Contains(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeHasPrefix applies the HasPrefix predicate on the "tstzrange" field.
+func TstzrangeHasPrefix(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.HasPrefix(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeHasSuffix applies the HasSuffix predicate on the "tstzrange" field.
+func TstzrangeHasSuffix(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.HasSuffix(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeIsNil applies the IsNil predicate on the "tstzrange" field.
+func TstzrangeIsNil() predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.IsNull(s.C(FieldTstzrange)))
+	})
+}
+
+// TstzrangeNotNil applies the NotNil predicate on the "tstzrange" field.
+func TstzrangeNotNil() predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.NotNull(s.C(FieldTstzrange)))
+	})
+}
+
+// TstzrangeEqualFold applies the EqualFold predicate on the "tstzrange" field.
+func TstzrangeEqualFold(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.EqualFold(s.C(FieldTstzrange), v))
+	})
+}
+
+// TstzrangeContainsFold applies the ContainsFold predicate on the "tstzrange" field.
+func TstzrangeContainsFold(v string) predicate.FieldType {
+	return predicate.FieldType(func(s *sql.Selector) {
+		s.Where(sql.ContainsFold(s.C(FieldTstzrange), v))
 	})
 }
 

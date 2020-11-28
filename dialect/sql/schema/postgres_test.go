@@ -220,6 +220,12 @@ func TestPostgres_Create(t *testing.T) {
 						{Name: "inet", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{dialect.Postgres: "inet"}},
 						{Name: "macaddr", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{dialect.Postgres: "macaddr"}},
 						{Name: "macaddr8", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{dialect.Postgres: "macaddr8"}},
+						{Name: "int4range", Type: field.TypeString, SchemaType: map[string]string{dialect.Postgres: "int4range"}},
+						{Name: "int8range", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{dialect.Postgres: "int8range"}},
+						{Name: "numrange", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{dialect.Postgres: "numrange"}},
+						{Name: "tsrange", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{dialect.Postgres: "tsrange"}},
+						{Name: "tstzrange", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{dialect.Postgres: "tstzrange"}},
+						{Name: "daterange", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{dialect.Postgres: "daterange"}},
 					},
 					PrimaryKey: []*Column{
 						{Name: "id", Type: field.TypeInt, Increment: true},
@@ -242,7 +248,13 @@ func TestPostgres_Create(t *testing.T) {
 						AddRow("cidr", "cidr", "NO", "NULL").
 						AddRow("inet", "inet", "YES", "NULL").
 						AddRow("macaddr", "macaddr", "YES", "NULL").
-						AddRow("macaddr8", "macaddr8", "YES", "NULL"))
+						AddRow("macaddr8", "macaddr8", "YES", "NULL").
+						AddRow("int4range", "int4range", "NO", "NULL").
+						AddRow("int8range", "int8range", "YES", "NULL").
+						AddRow("numrange", "numrange", "YES", "NULL").
+						AddRow("tsrange", "tsrange", "YES", "NULL").
+						AddRow("tstzrange", "tstzrange", "YES", "NULL").
+						AddRow("daterange", "daterange", "YES", "NULL"))
 				mock.ExpectQuery(escape(fmt.Sprintf(indexesQuery, "users"))).
 					WillReturnRows(sqlmock.NewRows([]string{"index_name", "column_name", "primary", "unique", "seq_in_index"}).
 						AddRow("users_pkey", "id", "t", "t", 0))

@@ -1302,6 +1302,7 @@ type FieldTypeMutation struct {
 	null_float                 *sql.NullFloat64
 	role                       *role.Role
 	mac                        *schema.MAC
+	tstzrange                  *string
 	clearedFields              map[string]struct{}
 	done                       bool
 	oldValue                   func(context.Context) (*FieldType, error)
@@ -4213,6 +4214,56 @@ func (m *FieldTypeMutation) ResetMAC() {
 	delete(m.clearedFields, fieldtype.FieldMAC)
 }
 
+// SetTstzrange sets the tstzrange field.
+func (m *FieldTypeMutation) SetTstzrange(s string) {
+	m.tstzrange = &s
+}
+
+// Tstzrange returns the tstzrange value in the mutation.
+func (m *FieldTypeMutation) Tstzrange() (r string, exists bool) {
+	v := m.tstzrange
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTstzrange returns the old tstzrange value of the FieldType.
+// If the FieldType object wasn't provided to the builder, the object is fetched
+// from the database.
+// An error is returned if the mutation operation is not UpdateOne, or database query fails.
+func (m *FieldTypeMutation) OldTstzrange(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, fmt.Errorf("OldTstzrange is allowed only on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, fmt.Errorf("OldTstzrange requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTstzrange: %w", err)
+	}
+	return oldValue.Tstzrange, nil
+}
+
+// ClearTstzrange clears the value of tstzrange.
+func (m *FieldTypeMutation) ClearTstzrange() {
+	m.tstzrange = nil
+	m.clearedFields[fieldtype.FieldTstzrange] = struct{}{}
+}
+
+// TstzrangeCleared returns if the field tstzrange was cleared in this mutation.
+func (m *FieldTypeMutation) TstzrangeCleared() bool {
+	_, ok := m.clearedFields[fieldtype.FieldTstzrange]
+	return ok
+}
+
+// ResetTstzrange reset all changes of the "tstzrange" field.
+func (m *FieldTypeMutation) ResetTstzrange() {
+	m.tstzrange = nil
+	delete(m.clearedFields, fieldtype.FieldTstzrange)
+}
+
 // Op returns the operation name.
 func (m *FieldTypeMutation) Op() Op {
 	return m.op
@@ -4227,7 +4278,7 @@ func (m *FieldTypeMutation) Type() string {
 // this mutation. Note that, in order to get all numeric
 // fields that were in/decremented, call AddedFields().
 func (m *FieldTypeMutation) Fields() []string {
-	fields := make([]string, 0, 46)
+	fields := make([]string, 0, 47)
 	if m.int != nil {
 		fields = append(fields, fieldtype.FieldInt)
 	}
@@ -4366,6 +4417,9 @@ func (m *FieldTypeMutation) Fields() []string {
 	if m.mac != nil {
 		fields = append(fields, fieldtype.FieldMAC)
 	}
+	if m.tstzrange != nil {
+		fields = append(fields, fieldtype.FieldTstzrange)
+	}
 	return fields
 }
 
@@ -4466,6 +4520,8 @@ func (m *FieldTypeMutation) Field(name string) (ent.Value, bool) {
 		return m.Role()
 	case fieldtype.FieldMAC:
 		return m.MAC()
+	case fieldtype.FieldTstzrange:
+		return m.Tstzrange()
 	}
 	return nil, false
 }
@@ -4567,6 +4623,8 @@ func (m *FieldTypeMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldRole(ctx)
 	case fieldtype.FieldMAC:
 		return m.OldMAC(ctx)
+	case fieldtype.FieldTstzrange:
+		return m.OldTstzrange(ctx)
 	}
 	return nil, fmt.Errorf("unknown FieldType field %s", name)
 }
@@ -4897,6 +4955,13 @@ func (m *FieldTypeMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMAC(v)
+		return nil
+	case fieldtype.FieldTstzrange:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTstzrange(v)
 		return nil
 	}
 	return fmt.Errorf("unknown FieldType field %s", name)
@@ -5399,6 +5464,9 @@ func (m *FieldTypeMutation) ClearedFields() []string {
 	if m.FieldCleared(fieldtype.FieldMAC) {
 		fields = append(fields, fieldtype.FieldMAC)
 	}
+	if m.FieldCleared(fieldtype.FieldTstzrange) {
+		fields = append(fields, fieldtype.FieldTstzrange)
+	}
 	return fields
 }
 
@@ -5532,6 +5600,9 @@ func (m *FieldTypeMutation) ClearField(name string) error {
 		return nil
 	case fieldtype.FieldMAC:
 		m.ClearMAC()
+		return nil
+	case fieldtype.FieldTstzrange:
+		m.ClearTstzrange()
 		return nil
 	}
 	return fmt.Errorf("unknown FieldType nullable field %s", name)
@@ -5679,6 +5750,9 @@ func (m *FieldTypeMutation) ResetField(name string) error {
 		return nil
 	case fieldtype.FieldMAC:
 		m.ResetMAC()
+		return nil
+	case fieldtype.FieldTstzrange:
+		m.ResetTstzrange()
 		return nil
 	}
 	return fmt.Errorf("unknown FieldType field %s", name)

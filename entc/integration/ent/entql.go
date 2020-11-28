@@ -122,6 +122,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			fieldtype.FieldNullFloat:             {Type: field.TypeFloat64, Column: fieldtype.FieldNullFloat},
 			fieldtype.FieldRole:                  {Type: field.TypeEnum, Column: fieldtype.FieldRole},
 			fieldtype.FieldMAC:                   {Type: field.TypeString, Column: fieldtype.FieldMAC},
+			fieldtype.FieldTstzrange:             {Type: field.TypeString, Column: fieldtype.FieldTstzrange},
 		},
 	}
 	graph.Nodes[3] = &sqlgraph.Node{
@@ -1032,6 +1033,11 @@ func (f *FieldTypeFilter) WhereRole(p entql.StringP) {
 // WhereMAC applies the entql string predicate on the mac field.
 func (f *FieldTypeFilter) WhereMAC(p entql.StringP) {
 	f.Where(p.Field(fieldtype.FieldMAC))
+}
+
+// WhereTstzrange applies the entql string predicate on the tstzrange field.
+func (f *FieldTypeFilter) WhereTstzrange(p entql.StringP) {
+	f.Where(p.Field(fieldtype.FieldTstzrange))
 }
 
 // addPredicate implements the predicateAdder interface.

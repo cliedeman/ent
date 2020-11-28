@@ -99,6 +99,7 @@ var (
 		{Name: "null_float", Type: field.TypeFloat64, Nullable: true},
 		{Name: "role", Type: field.TypeEnum, Enums: []string{"ADMIN", "OWNER", "USER", "READ", "WRITE"}, Default: "READ"},
 		{Name: "mac", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "macaddr"}},
+		{Name: "tstzrange", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "tstzrange"}},
 		{Name: "file_field", Type: field.TypeInt, Nullable: true},
 	}
 	// FieldTypesTable holds the schema information for the "field_types" table.
@@ -109,7 +110,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:  "field_types_files_field",
-				Columns: []*schema.Column{FieldTypesColumns[47]},
+				Columns: []*schema.Column{FieldTypesColumns[48]},
 
 				RefColumns: []*schema.Column{FilesColumns[0]},
 				OnDelete:   schema.SetNull,

@@ -249,7 +249,7 @@ func (d *Postgres) scanColumn(c *Column, rows *sql.Rows) error {
 		c.Type = field.TypeJSON
 	case "uuid":
 		c.Type = field.TypeUUID
-	case "cidr", "inet", "macaddr", "macaddr8":
+	case "cidr", "inet", "macaddr", "macaddr8", "int4range", "int8range", "numrange", "tsrange", "tstzrange", "daterange":
 		c.Type = field.TypeOther
 	}
 	switch {

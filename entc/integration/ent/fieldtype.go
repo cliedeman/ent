@@ -115,7 +115,9 @@ type FieldType struct {
 	// Role holds the value of the "role" field.
 	Role role.Role `json:"role,omitempty"`
 	// MAC holds the value of the "mac" field.
-	MAC        schema.MAC `json:"mac,omitempty"`
+	MAC schema.MAC `json:"mac,omitempty"`
+	// Tstzrange holds the value of the "tstzrange" field.
+	Tstzrange  string `json:"tstzrange,omitempty"`
 	file_field *int
 }
 
@@ -169,6 +171,7 @@ func (*FieldType) scanValues() []interface{} {
 		&sql.NullFloat64{}, // null_float
 		&sql.NullString{},  // role
 		&schema.MAC{},      // mac
+		&sql.NullString{},  // tstzrange
 	}
 }
 
@@ -428,7 +431,12 @@ func (ft *FieldType) assignValues(values ...interface{}) error {
 	} else if value != nil {
 		ft.MAC = *value
 	}
-	values = values[46:]
+	if value, ok := values[46].(*sql.NullString); !ok {
+		return fmt.Errorf("unexpected type %T for field tstzrange", values[46])
+	} else if value.Valid {
+		ft.Tstzrange = value.String
+	}
+	values = values[47:]
 	if len(values) == len(fieldtype.ForeignKeys) {
 		if value, ok := values[0].(*sql.NullInt64); !ok {
 			return fmt.Errorf("unexpected type %T for edge-field file_field", value)
@@ -573,6 +581,8 @@ func (ft *FieldType) String() string {
 	builder.WriteString(fmt.Sprintf("%v", ft.Role))
 	builder.WriteString(", mac=")
 	builder.WriteString(fmt.Sprintf("%v", ft.MAC))
+	builder.WriteString(", tstzrange=")
+	builder.WriteString(ft.Tstzrange)
 	builder.WriteByte(')')
 	return builder.String()
 }

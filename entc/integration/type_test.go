@@ -112,6 +112,7 @@ func Types(t *testing.T, client *ent.Client) {
 		SetSchemaInt8(8).
 		SetSchemaInt64(64).
 		SetMAC(schema.MAC{HardwareAddr: mac}).
+		SetTstzrange(`["2010-01-01 14:30:00+00","2010-01-01 15:30:00+00")`).
 		SaveX(ctx)
 
 	require.Equal(int8(math.MaxInt8), ft.OptionalInt8)
@@ -135,6 +136,7 @@ func Types(t *testing.T, client *ent.Client) {
 	require.Equal(schema.Int8(8), ft.SchemaInt8)
 	require.Equal(schema.Int64(64), ft.SchemaInt64)
 	require.Equal(mac.String(), ft.MAC.String())
+	require.Equal(`["2010-01-01 14:30:00+00","2010-01-01 15:30:00+00")`, ft.Tstzrange)
 
 	_, err = client.Task.CreateBulk(
 		client.Task.Create().SetPriority(schema.PriorityLow),

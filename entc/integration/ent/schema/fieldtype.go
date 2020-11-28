@@ -7,15 +7,14 @@ package schema
 import (
 	"database/sql/driver"
 	"fmt"
-	"net"
-	"net/http"
-	"net/url"
-
 	"github.com/facebook/ent"
 	"github.com/facebook/ent/dialect"
 	"github.com/facebook/ent/dialect/sql"
 	"github.com/facebook/ent/entc/integration/ent/role"
 	"github.com/facebook/ent/schema/field"
+	"net"
+	"net/http"
+	"net/url"
 )
 
 // FieldType holds the schema definition for the FieldType entity.
@@ -139,6 +138,11 @@ func (FieldType) Fields() []ent.Field {
 			Validate(func(s string) error {
 				_, err := net.ParseMAC(s)
 				return err
+			}),
+		field.String("tstzrange").
+			Optional().
+			SchemaType(map[string]string{
+				dialect.Postgres: "tstzrange",
 			}),
 	}
 }

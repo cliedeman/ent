@@ -553,6 +553,20 @@ func (ftc *FieldTypeCreate) SetMAC(s schema.MAC) *FieldTypeCreate {
 	return ftc
 }
 
+// SetTstzrange sets the tstzrange field.
+func (ftc *FieldTypeCreate) SetTstzrange(s string) *FieldTypeCreate {
+	ftc.mutation.SetTstzrange(s)
+	return ftc
+}
+
+// SetNillableTstzrange sets the tstzrange field if the given value is not nil.
+func (ftc *FieldTypeCreate) SetNillableTstzrange(s *string) *FieldTypeCreate {
+	if s != nil {
+		ftc.SetTstzrange(*s)
+	}
+	return ftc
+}
+
 // Mutation returns the FieldTypeMutation object of the builder.
 func (ftc *FieldTypeCreate) Mutation() *FieldTypeMutation {
 	return ftc.mutation
@@ -1055,6 +1069,14 @@ func (ftc *FieldTypeCreate) createSpec() (*FieldType, *sqlgraph.CreateSpec) {
 			Column: fieldtype.FieldMAC,
 		})
 		_node.MAC = value
+	}
+	if value, ok := ftc.mutation.Tstzrange(); ok {
+		_spec.Fields = append(_spec.Fields, &sqlgraph.FieldSpec{
+			Type:   field.TypeString,
+			Value:  value,
+			Column: fieldtype.FieldTstzrange,
+		})
+		_node.Tstzrange = value
 	}
 	return _node, _spec
 }
