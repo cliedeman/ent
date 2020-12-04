@@ -5,41 +5,36 @@
 package schema
 
 import (
-	"log"
-	"time"
-
-	"github.com/facebookincubator/ent"
-	"github.com/facebookincubator/ent/schema/edge"
-	"github.com/facebookincubator/ent/schema/field"
+	"github.com/facebook/ent"
+	"github.com/facebook/ent/entc/integration/ent/template"
+	"github.com/facebook/ent/schema"
+	"github.com/facebook/ent/schema/edge"
+	"github.com/facebook/ent/schema/field"
+	"github.com/facebook/ent/schema/mixin"
 )
-
-type TimeMixin struct{}
-
-func (TimeMixin) Fields() []ent.Field {
-	return []ent.Field{
-		field.Time("created_at").
-			Default(time.Now).
-			Immutable(),
-		field.Time("updated_at").
-			Default(time.Now).
-			UpdateDefault(time.Now).
-			Immutable(),
-	}
-}
 
 // Card holds the schema definition for the CreditCard entity.
 type Card struct {
 	ent.Schema
+}
 
-	// additional fields to be added to the schema.
-	internal  int         // internal.
-	RequestID string      // RequestID.
-	Logger    *log.Logger // Logger.
+func (Card) Annotations() []schema.Annotation {
+	return []schema.Annotation{
+		edge.Annotation{
+			StructTag: `json:"card_edges" mashraki:"edges"`,
+		},
+		field.Annotation{
+			StructTag: map[string]string{
+				"id":     `json:"-"`,
+				"number": `json:"-"`,
+			},
+		},
+	}
 }
 
 func (Card) Mixin() []ent.Mixin {
 	return []ent.Mixin{
-		TimeMixin{},
+		mixin.Time{},
 	}
 }
 
@@ -47,16 +42,32 @@ func (Card) Mixin() []ent.Mixin {
 func (Card) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("number").
-			NotEmpty(),
+			Immutable().
+			NotEmpty().
+			Annotations(&template.Extension{
+				Type: "string",
+			}),
+		field.String("name").
+			Optional().
+			Comment("Exact name written on card").
+			NotEmpty().
+			Annotations(&template.Extension{
+				Type: "string",
+			}),
 	}
 }
 
-// Edges of the Comment.
+// Edges of the Card.
 func (Card) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("owner", User.Type).
 			Comment("O2O inverse edge").
 			Ref("card").
 			Unique(),
+		edge.From("spec", Spec.Type).
+			Ref("card").
+			Annotations(&template.Extension{
+				Type: "int",
+			}),
 	}
 }

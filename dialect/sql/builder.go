@@ -2,168 +2,41 @@
 // This source code is licensed under the Apache 2.0 license found
 // in the LICENSE file in the root directory of this source tree.
 
+// Package sql provides wrappers around the standard database/sql package
+// to allow the generated code to interact with a statically-typed API.
+//
+// Users that are interacting with this package should be aware that the
+// following builders don't check the given SQL syntax nor validate or escape
+// user-inputs. ~All validations are expected to be happened in the generated
+// ent package.
 package sql
 
 import (
 	"bytes"
+	"database/sql/driver"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/facebookincubator/ent/dialect"
+	"github.com/facebook/ent/dialect"
 )
 
-// Querier wraps the basic Query method.
+// Querier wraps the basic Query method that is implemented
+// by the different builders in this file.
 type Querier interface {
-	// Query returns the query representation of the element and its arguments (if any).
+	// Query returns the query representation of the element
+	// and its arguments (if any).
 	Query() (string, []interface{})
-}
-
-// Queries are list of queries join with space between them.
-type Queries []Querier
-
-// Query returns query representation of Queriers.
-func (n Queries) Query() (string, []interface{}) {
-	var b Builder
-	for i := range n {
-		if i > 0 {
-			b.Pad()
-		}
-		query, args := n[i].Query()
-		b.WriteString(query)
-		b.args = append(b.args, args...)
-	}
-	return b.String(), b.args
-}
-
-// Builder is the base query builder for the sql dsl.
-type Builder struct {
-	bytes.Buffer
-	args    []interface{}
-	dialect string
-}
-
-// Append appends the given string as a quoted parameter
-func (b *Builder) Append(s string) *Builder {
-	switch {
-	case len(s) == 0:
-	case s != "*" && s[0] != '`' && !isFunc(s) && !isModifier(s):
-		fmt.Fprintf(b, "`%s`", s)
-	default:
-		b.WriteString(s)
-	}
-	return b
-}
-
-// AppendComma appends calls Append on all arguments and adds a comma between them.
-func (b *Builder) AppendComma(s ...string) *Builder {
-	for i := range s {
-		if i > 0 {
-			b.Comma()
-		}
-		b.Append(s[i])
-	}
-	return b
-}
-
-// Arg appends an argument to the builder.
-func (b *Builder) Arg(a interface{}) *Builder {
-	switch a := a.(type) {
-	case *raw:
-		b.WriteString(a.s)
-	default:
-		b.WriteString("?")
-		b.args = append(b.args, a)
-	}
-	return b
-}
-
-// Args appends a list of arguments to the builder.
-func (b *Builder) Args(a ...interface{}) *Builder {
-	for i := range a {
-		if i > 0 {
-			b.Comma()
-		}
-		b.Arg(a[i])
-	}
-	return b
-}
-
-// Comma adds a comma to the query.
-func (b *Builder) Comma() *Builder {
-	b.WriteString(", ")
-	return b
-}
-
-// Pad adds a space to the query.
-func (b *Builder) Pad() *Builder {
-	b.WriteString(" ")
-	return b
-}
-
-// Join joins a list of Queriers to the builder.
-func (b *Builder) Join(n ...Querier) *Builder {
-	for i := range n {
-		query, args := n[i].Query()
-		b.WriteString(query)
-		b.args = append(b.args, args...)
-	}
-	return b
-}
-
-// JoinComma joins a list of Queriers and adds comma between them.
-func (b *Builder) JoinComma(n ...Querier) *Builder {
-	for i := range n {
-		if i > 0 {
-			b.Comma()
-		}
-		query, args := n[i].Query()
-		b.WriteString(query)
-		b.args = append(b.args, args...)
-	}
-	return b
-}
-
-// Nested gets a callback, and wraps its result with parentheses.
-func (b *Builder) Nested(f func(*Builder)) *Builder {
-	nb := &Builder{}
-	nb.WriteString("(")
-	f(nb)
-	nb.WriteString(")")
-	nb.WriteTo(b)
-	b.args = append(b.args, nb.args...)
-	return b
-}
-
-// clone returns a shallow clone of a builder.
-func (b Builder) clone() Builder {
-	c := Builder{args: append([]interface{}{}, b.args...)}
-	c.Buffer.Write(c.Bytes())
-	return c
-}
-
-// SetDialect sets the builder dialect. It's used for garnering dialect specific queries.
-func (b *Builder) SetDialect(dialect string) *Builder {
-	b.dialect = dialect
-	return b
-}
-
-// Dialect returns the dialect of the builder.
-func (b Builder) Dialect() string {
-	return b.dialect
-}
-
-// Query implements the Querier interface.
-func (b Builder) Query() (string, []interface{}) {
-	return b.String(), b.args
 }
 
 // ColumnBuilder is a builder for column definition in table creation.
 type ColumnBuilder struct {
-	b    Builder
-	typ  string // column type.
-	name string // column name.
-	attr string // extra attributes.
+	Builder
+	typ    string             // column type.
+	name   string             // column name.
+	attr   string             // extra attributes.
+	modify bool               // modify existing.
+	fk     *ForeignKeyBuilder // foreign-key constraint.
 }
 
 // Column returns a new ColumnBuilder with the given name.
@@ -179,36 +52,53 @@ func (c *ColumnBuilder) Type(t string) *ColumnBuilder {
 }
 
 // Attr sets an extra attribute for the column, like UNIQUE or AUTO_INCREMENT.
-func (c *ColumnBuilder) Attr(a string) *ColumnBuilder {
-	if c.attr != "" && a != "" {
+func (c *ColumnBuilder) Attr(attr string) *ColumnBuilder {
+	if c.attr != "" && attr != "" {
 		c.attr += " "
 	}
-	c.attr += a
+	c.attr += attr
+	return c
+}
+
+// Constraint adds the CONSTRAINT clause to the ADD COLUMN statement in SQLite.
+func (c *ColumnBuilder) Constraint(fk *ForeignKeyBuilder) *ColumnBuilder {
+	c.fk = fk
 	return c
 }
 
 // Query returns query representation of a Column.
 func (c *ColumnBuilder) Query() (string, []interface{}) {
-	c.b.Append(c.name)
+	c.Ident(c.name)
 	if c.typ != "" {
-		c.b.Pad().WriteString(c.typ)
+		if c.postgres() && c.modify {
+			c.Pad().WriteString("TYPE")
+		}
+		c.Pad().WriteString(c.typ)
 	}
 	if c.attr != "" {
-		c.b.Pad().WriteString(c.attr)
+		c.Pad().WriteString(c.attr)
 	}
-	return c.b.String(), c.b.args
+	if c.fk != nil {
+		c.WriteString(" CONSTRAINT " + c.fk.symbol)
+		c.Pad().Join(c.fk.ref)
+		for _, action := range c.fk.actions {
+			c.Pad().WriteString(action)
+		}
+	}
+	return c.String(), c.args
 }
 
 // TableBuilder is a query builder for `CREATE TABLE` statement.
 type TableBuilder struct {
-	b           Builder
-	name        string           // table name.
-	exists      bool             // check existence.
-	charset     string           // table charset.
-	collation   string           // table collation.
-	columns     []*ColumnBuilder // table columns.
-	primary     []string         // primary key.
-	constraints []Querier        // foreign keys and indices.
+	Builder
+	name        string    // table name.
+	exists      bool      // check existence.
+	charset     string    // table charset.
+	collation   string    // table collation.
+	options     string    // table options.
+	columns     []Querier // table columns.
+	primary     []string  // primary key.
+	constraints []Querier // foreign keys and indices.
 }
 
 // CreateTable returns a query builder for the `CREATE TABLE` statement.
@@ -235,8 +125,11 @@ func (t *TableBuilder) Column(c *ColumnBuilder) *TableBuilder {
 }
 
 // Columns appends the a list of columns to the builder.
-func (t *TableBuilder) Columns(c ...*ColumnBuilder) *TableBuilder {
-	t.columns = append(t.columns, c...)
+func (t *TableBuilder) Columns(columns ...*ColumnBuilder) *TableBuilder {
+	t.columns = make([]Querier, 0, len(columns))
+	for i := range columns {
+		t.columns = append(t.columns, columns[i])
+	}
 	return t
 }
 
@@ -280,24 +173,30 @@ func (t *TableBuilder) Collate(s string) *TableBuilder {
 	return t
 }
 
+// Options appends additional options to to the statement (MySQL only).
+func (t *TableBuilder) Options(s string) *TableBuilder {
+	t.options = s
+	return t
+}
+
 // Query returns query representation of a `CREATE TABLE` statement.
+//
+// CREATE TABLE [IF NOT EXISTS] name
+//    (table definition)
+//    [charset and collation]
+//
 func (t *TableBuilder) Query() (string, []interface{}) {
-	t.b.WriteString("CREATE TABLE ")
+	t.WriteString("CREATE TABLE ")
 	if t.exists {
-		t.b.WriteString("IF NOT EXISTS ")
+		t.WriteString("IF NOT EXISTS ")
 	}
-	t.b.Append(t.name)
-	t.b.Nested(func(b *Builder) {
-		for i, c := range t.columns {
-			if i > 0 {
-				b.Comma()
-			}
-			b.Join(c)
-		}
+	t.Ident(t.name)
+	t.Nested(func(b *Builder) {
+		b.JoinComma(t.columns...)
 		if len(t.primary) > 0 {
 			b.Comma().WriteString("PRIMARY KEY")
 			b.Nested(func(b *Builder) {
-				b.AppendComma(t.primary...)
+				b.IdentComma(t.primary...)
 			})
 		}
 		if len(t.constraints) > 0 {
@@ -305,17 +204,20 @@ func (t *TableBuilder) Query() (string, []interface{}) {
 		}
 	})
 	if t.charset != "" {
-		t.b.WriteString(" CHARACTER SET " + t.charset)
+		t.WriteString(" CHARACTER SET " + t.charset)
 	}
 	if t.collation != "" {
-		t.b.WriteString(" COLLATE " + t.collation)
+		t.WriteString(" COLLATE " + t.collation)
 	}
-	return t.b.String(), t.b.args
+	if t.options != "" {
+		t.WriteString(" " + t.options)
+	}
+	return t.String(), t.args
 }
 
 // DescribeBuilder is a query builder for `DESCRIBE` statement.
 type DescribeBuilder struct {
-	b    Builder
+	Builder
 	name string // table name.
 }
 
@@ -327,62 +229,168 @@ func Describe(name string) *DescribeBuilder { return &DescribeBuilder{name: name
 
 // Query returns query representation of a `DESCRIBE` statement.
 func (t *DescribeBuilder) Query() (string, []interface{}) {
-	t.b.WriteString("DESCRIBE ")
-	t.b.Append(t.name)
-	return t.b.String(), nil
+	t.WriteString("DESCRIBE ")
+	t.Ident(t.name)
+	return t.String(), nil
 }
 
 // TableAlter is a query builder for `ALTER TABLE` statement.
 type TableAlter struct {
-	b        Builder
-	name     string    // table to alter.
-	Queriers []Querier // columns and foreign-keys to add.
+	Builder
+	name    string    // table to alter.
+	Queries []Querier // columns and foreign-keys to add.
 }
 
 // AlterTable returns a query builder for the `ALTER TABLE` statement.
 //
 //	AlterTable("users").
 //		AddColumn(Column("group_id").Type("int").Attr("UNIQUE")).
-//		AddForeignKey(ForeignKey().Columns("group_id"). Reference(Reference().Table("groups").Columns("id")).OnDelete("CASCADE"))
+//		AddForeignKey(ForeignKey().Columns("group_id").
+//			Reference(Reference().Table("groups").Columns("id")).OnDelete("CASCADE")),
+//		)
 //
 func AlterTable(name string) *TableAlter { return &TableAlter{name: name} }
 
 // AddColumn appends the `ADD COLUMN` clause to the given `ALTER TABLE` statement.
 func (t *TableAlter) AddColumn(c *ColumnBuilder) *TableAlter {
-	t.Queriers = append(t.Queriers, &Wrapper{"ADD COLUMN %s", c})
+	t.Queries = append(t.Queries, &Wrapper{"ADD COLUMN %s", c})
 	return t
 }
 
-// Modify appends the `MODIFY COLUMN` clause to the given `ALTER TABLE` statement.
+// ModifyColumn appends the `MODIFY/ALTER COLUMN` clause to the given `ALTER TABLE` statement.
 func (t *TableAlter) ModifyColumn(c *ColumnBuilder) *TableAlter {
-	t.Queriers = append(t.Queriers, &Wrapper{"MODIFY COLUMN %s", c})
+	switch {
+	case t.postgres():
+		c.modify = true
+		t.Queries = append(t.Queries, &Wrapper{"ALTER COLUMN %s", c})
+	default:
+		t.Queries = append(t.Queries, &Wrapper{"MODIFY COLUMN %s", c})
+	}
+	return t
+}
+
+// RenameColumn appends the `RENAME COLUMN` clause to the given `ALTER TABLE` statement.
+func (t *TableAlter) RenameColumn(old, new string) *TableAlter {
+	t.Queries = append(t.Queries, Raw(fmt.Sprintf("RENAME COLUMN %s TO %s", t.Quote(old), t.Quote(new))))
+	return t
+}
+
+// ModifyColumns calls ModifyColumn with each of the given builders.
+func (t *TableAlter) ModifyColumns(cs ...*ColumnBuilder) *TableAlter {
+	for _, c := range cs {
+		t.ModifyColumn(c)
+	}
 	return t
 }
 
 // DropColumn appends the `DROP COLUMN` clause to the given `ALTER TABLE` statement.
 func (t *TableAlter) DropColumn(c *ColumnBuilder) *TableAlter {
-	t.Queriers = append(t.Queriers, &Wrapper{"DROP COLUMN %s", c})
+	t.Queries = append(t.Queries, &Wrapper{"DROP COLUMN %s", c})
+	return t
+}
+
+// ChangeColumn appends the `CHANGE COLUMN` clause to the given `ALTER TABLE` statement.
+func (t *TableAlter) ChangeColumn(name string, c *ColumnBuilder) *TableAlter {
+	prefix := fmt.Sprintf("CHANGE COLUMN %s", t.Quote(name))
+	t.Queries = append(t.Queries, &Wrapper{prefix + " %s", c})
+	return t
+}
+
+// RenameIndex appends the `RENAME INDEX` clause to the given `ALTER TABLE` statement.
+func (t *TableAlter) RenameIndex(curr, new string) *TableAlter {
+	t.Queries = append(t.Queries, Raw(fmt.Sprintf("RENAME INDEX %s TO %s", t.Quote(curr), t.Quote(new))))
+	return t
+}
+
+// DropIndex appends the `DROP INDEX` clause to the given `ALTER TABLE` statement.
+func (t *TableAlter) DropIndex(name string) *TableAlter {
+	t.Queries = append(t.Queries, Raw(fmt.Sprintf("DROP INDEX %s", t.Quote(name))))
+	return t
+}
+
+// AddIndex appends the `ADD INDEX` clause to the given `ALTER TABLE` statement.
+func (t *TableAlter) AddIndex(idx *IndexBuilder) *TableAlter {
+	b := &Builder{dialect: t.dialect}
+	b.WriteString("ADD ")
+	if idx.unique {
+		b.WriteString("UNIQUE ")
+	}
+	b.WriteString("INDEX ")
+	b.Ident(idx.name)
+	b.Nested(func(b *Builder) {
+		b.IdentComma(idx.columns...)
+	})
+	t.Queries = append(t.Queries, b)
 	return t
 }
 
 // AddForeignKey adds a foreign key constraint to the `ALTER TABLE` statement.
 func (t *TableAlter) AddForeignKey(fk *ForeignKeyBuilder) *TableAlter {
-	t.Queriers = append(t.Queriers, &Wrapper{"ADD CONSTRAINT %s", fk})
+	t.Queries = append(t.Queries, &Wrapper{"ADD CONSTRAINT %s", fk})
+	return t
+}
+
+// DropConstraint appends the `DROP CONSTRAINT` clause to the given `ALTER TABLE` statement.
+func (t *TableAlter) DropConstraint(ident string) *TableAlter {
+	t.Queries = append(t.Queries, Raw(fmt.Sprintf("DROP CONSTRAINT %s", t.Quote(ident))))
+	return t
+}
+
+// DropForeignKey appends the `DROP FOREIGN KEY` clause to the given `ALTER TABLE` statement.
+func (t *TableAlter) DropForeignKey(ident string) *TableAlter {
+	t.Queries = append(t.Queries, Raw(fmt.Sprintf("DROP FOREIGN KEY %s", t.Quote(ident))))
 	return t
 }
 
 // Query returns query representation of the `ALTER TABLE` statement.
+//
+//	ALTER TABLE name
+//    [alter_specification]
+//
 func (t *TableAlter) Query() (string, []interface{}) {
-	t.b.WriteString("ALTER TABLE ")
-	t.b.Append(t.name)
-	t.b.Pad()
-	t.b.JoinComma(t.Queriers...)
-	return t.b.String(), t.b.args
+	t.WriteString("ALTER TABLE ")
+	t.Ident(t.name)
+	t.Pad()
+	t.JoinComma(t.Queries...)
+	return t.String(), t.args
+}
+
+// IndexAlter is a query builder for `ALTER INDEX` statement.
+type IndexAlter struct {
+	Builder
+	name    string    // index to alter.
+	Queries []Querier // alter options.
+}
+
+// AlterIndex returns a query builder for the `ALTER INDEX` statement.
+//
+//	AlterIndex("old_key").
+//		Rename("new_key")
+//
+func AlterIndex(name string) *IndexAlter { return &IndexAlter{name: name} }
+
+// Rename appends the `RENAME TO` clause to the `ALTER INDEX` statement.
+func (i *IndexAlter) Rename(name string) *IndexAlter {
+	i.Queries = append(i.Queries, Raw(fmt.Sprintf("RENAME TO %s", i.Quote(name))))
+	return i
+}
+
+// Query returns query representation of the `ALTER INDEX` statement.
+//
+//	ALTER INDEX name
+//    [alter_specification]
+//
+func (i *IndexAlter) Query() (string, []interface{}) {
+	i.WriteString("ALTER INDEX ")
+	i.Ident(i.name)
+	i.Pad()
+	i.JoinComma(i.Queries...)
+	return i.String(), i.args
 }
 
 // ForeignKeyBuilder is the builder for the foreign-key constraint clause.
 type ForeignKeyBuilder struct {
-	b       Builder
+	Builder
 	symbol  string
 	columns []string
 	actions []string
@@ -390,6 +398,7 @@ type ForeignKeyBuilder struct {
 }
 
 // ForeignKey returns a builder for the foreign-key constraint clause in create/alter table statements.
+//
 // 	ForeignKey().
 // 		Columns("group_id").
 //		Reference(Reference().Table("groups").Columns("id")).
@@ -436,24 +445,22 @@ func (fk *ForeignKeyBuilder) OnUpdate(action string) *ForeignKeyBuilder {
 // Query returns query representation of a foreign key constraint.
 func (fk *ForeignKeyBuilder) Query() (string, []interface{}) {
 	if fk.symbol != "" {
-		fk.b.Append(fk.symbol)
-		fk.b.Pad()
+		fk.Ident(fk.symbol).Pad()
 	}
-	fk.b.WriteString("FOREIGN KEY")
-	fk.b.Nested(func(b *Builder) {
-		b.AppendComma(fk.columns...)
+	fk.WriteString("FOREIGN KEY")
+	fk.Nested(func(b *Builder) {
+		b.IdentComma(fk.columns...)
 	})
-	fk.b.Pad()
-	fk.b.Join(fk.ref)
+	fk.Pad().Join(fk.ref)
 	for _, action := range fk.actions {
-		fk.b.Pad().WriteString(action)
+		fk.Pad().WriteString(action)
 	}
-	return fk.b.String(), fk.b.args
+	return fk.String(), fk.args
 }
 
 // ReferenceBuilder is a builder for the reference clause in constraints. For example, in foreign key creation.
 type ReferenceBuilder struct {
-	b       Builder
+	Builder
 	table   string   // referenced table.
 	columns []string // referenced columns.
 }
@@ -478,17 +485,17 @@ func (r *ReferenceBuilder) Columns(s ...string) *ReferenceBuilder {
 
 // Query returns query representation of a reference clause.
 func (r *ReferenceBuilder) Query() (string, []interface{}) {
-	r.b.WriteString("REFERENCES ")
-	r.b.Append(r.table)
-	r.b.Nested(func(b *Builder) {
-		b.AppendComma(r.columns...)
+	r.WriteString("REFERENCES ")
+	r.Ident(r.table)
+	r.Nested(func(b *Builder) {
+		b.IdentComma(r.columns...)
 	})
-	return r.b.String(), r.b.args
+	return r.String(), r.args
 }
 
 // IndexBuilder is a builder for `CREATE INDEX` statement.
 type IndexBuilder struct {
-	b       Builder
+	Builder
 	name    string
 	unique  bool
 	table   string
@@ -539,22 +546,22 @@ func (i *IndexBuilder) Columns(columns ...string) *IndexBuilder {
 
 // Query returns query representation of a reference clause.
 func (i *IndexBuilder) Query() (string, []interface{}) {
-	i.b.WriteString("CREATE ")
+	i.WriteString("CREATE ")
 	if i.unique {
-		i.b.WriteString("UNIQUE ")
+		i.WriteString("UNIQUE ")
 	}
-	i.b.WriteString("INDEX ")
-	i.b.Append(i.name)
-	i.b.WriteString(" ON ")
-	i.b.Append(i.table).Nested(func(b *Builder) {
-		b.AppendComma(i.columns...)
+	i.WriteString("INDEX ")
+	i.Ident(i.name)
+	i.WriteString(" ON ")
+	i.Ident(i.table).Nested(func(b *Builder) {
+		b.IdentComma(i.columns...)
 	})
-	return i.b.String(), nil
+	return i.String(), nil
 }
 
 // DropIndexBuilder is a builder for `DROP INDEX` statement.
 type DropIndexBuilder struct {
-	b     Builder
+	Builder
 	name  string
 	table string
 }
@@ -581,23 +588,27 @@ func (d *DropIndexBuilder) Table(table string) *DropIndexBuilder {
 }
 
 // Query returns query representation of a reference clause.
+//
+//	DROP INDEX index_name [ON table_name]
+//
 func (d *DropIndexBuilder) Query() (string, []interface{}) {
-	d.b.WriteString("DROP INDEX ")
-	d.b.Append(d.name)
+	d.WriteString("DROP INDEX ")
+	d.Ident(d.name)
 	if d.table != "" {
-		d.b.WriteString(" ON ")
-		d.b.Append(d.table)
+		d.WriteString(" ON ")
+		d.Ident(d.table)
 	}
-	return d.b.String(), nil
+	return d.String(), nil
 }
 
 // InsertBuilder is a builder for `INSERT INTO` statement.
 type InsertBuilder struct {
-	b        Builder
-	table    string
-	columns  []string
-	defaults string
-	values   [][]interface{}
+	Builder
+	table     string
+	columns   []string
+	defaults  string
+	returning []string
+	values    [][]interface{}
 }
 
 // Insert creates a builder for the `INSERT INTO` statement.
@@ -634,40 +645,52 @@ func (i *InsertBuilder) Values(values ...interface{}) *InsertBuilder {
 }
 
 // Default sets the default values clause based on the dialect type.
-func (i *InsertBuilder) Default(d string) *InsertBuilder {
-	switch d {
+func (i *InsertBuilder) Default() *InsertBuilder {
+	switch i.Dialect() {
 	case dialect.MySQL:
 		i.defaults = "VALUES ()"
-	case dialect.SQLite:
+	case dialect.SQLite, dialect.Postgres:
 		i.defaults = "DEFAULT VALUES"
 	}
 	return i
 }
 
+// Returning adds the `RETURNING` clause to the insert statement. PostgreSQL only.
+func (i *InsertBuilder) Returning(columns ...string) *InsertBuilder {
+	i.returning = columns
+	return i
+}
+
 // Query returns query representation of an `INSERT INTO` statement.
 func (i *InsertBuilder) Query() (string, []interface{}) {
-	i.b.WriteString("INSERT INTO ")
+	i.WriteString("INSERT INTO ")
+	i.Ident(i.table).Pad()
 	if i.defaults != "" && len(i.columns) == 0 {
-		return i.b.Append(i.table).Pad().String() + i.defaults, nil
-	}
-	i.b.Append(i.table).Pad().Nested(func(b *Builder) {
-		b.AppendComma(i.columns...)
-	})
-	i.b.WriteString(" VALUES ")
-	for j, v := range i.values {
-		if j > 0 {
-			i.b.Comma()
-		}
-		i.b.Nested(func(b *Builder) {
-			b.Args(v...)
+		i.WriteString(i.defaults)
+	} else {
+		i.Nested(func(b *Builder) {
+			b.IdentComma(i.columns...)
 		})
+		i.WriteString(" VALUES ")
+		for j, v := range i.values {
+			if j > 0 {
+				i.Comma()
+			}
+			i.Nested(func(b *Builder) {
+				b.Args(v...)
+			})
+		}
 	}
-	return i.b.String(), i.b.args
+	if len(i.returning) > 0 && i.postgres() {
+		i.WriteString(" RETURNING ")
+		i.IdentComma(i.returning...)
+	}
+	return i.String(), i.args
 }
 
 // UpdateBuilder is a builder for `UPDATE` statement.
 type UpdateBuilder struct {
-	b       Builder
+	Builder
 	table   string
 	where   *Predicate
 	nulls   []string
@@ -691,14 +714,14 @@ func (u *UpdateBuilder) Set(column string, v interface{}) *UpdateBuilder {
 // Add adds a numeric value to the given column.
 func (u *UpdateBuilder) Add(column string, v interface{}) *UpdateBuilder {
 	u.columns = append(u.columns, column)
-	var b Builder
-	b.WriteString("COALESCE")
-	b.Nested(func(b *Builder) {
-		b.Append(column).Comma().Arg(0)
-	})
-	b.WriteString(" + ")
-	b.Arg(v)
-	u.values = append(u.values, b)
+	u.values = append(u.values, P().Append(func(b *Builder) {
+		b.WriteString("COALESCE")
+		b.Nested(func(b *Builder) {
+			b.Ident(column).Comma().Arg(0)
+		})
+		b.WriteString(" + ")
+		b.Arg(v)
+	}))
 	return u
 }
 
@@ -711,9 +734,18 @@ func (u *UpdateBuilder) SetNull(column string) *UpdateBuilder {
 // Where adds a where predicate for update statement.
 func (u *UpdateBuilder) Where(p *Predicate) *UpdateBuilder {
 	if u.where != nil {
-		u.where.merge(p)
+		u.where = And(u.where, p)
 	} else {
 		u.where = p
+	}
+	return u
+}
+
+// FromSelect makes it possible to update entities that match the sub-query.
+func (u *UpdateBuilder) FromSelect(s *Selector) *UpdateBuilder {
+	u.Where(s.where)
+	if table, _ := s.from.(*SelectTable); table != nil {
+		u.table = table.name
 	}
 	return u
 }
@@ -725,39 +757,39 @@ func (u *UpdateBuilder) Empty() bool {
 
 // Query returns query representation of an `UPDATE` statement.
 func (u *UpdateBuilder) Query() (string, []interface{}) {
-	u.b.WriteString("UPDATE ")
-	u.b.Append(u.table).Pad().WriteString("SET ")
+	u.WriteString("UPDATE ")
+	u.Ident(u.table).Pad().WriteString("SET ")
 	for i, c := range u.nulls {
 		if i > 0 {
-			u.b.Comma()
+			u.Comma()
 		}
-		u.b.Append(c).WriteString(" = NULL")
+		u.Ident(c).WriteString(" = NULL")
 	}
 	if len(u.nulls) > 0 && len(u.columns) > 0 {
-		u.b.Comma()
+		u.Comma()
 	}
 	for i, c := range u.columns {
 		if i > 0 {
-			u.b.Comma()
+			u.Comma()
 		}
-		u.b.Append(c).WriteString(" = ")
+		u.Ident(c).WriteString(" = ")
 		switch v := u.values[i].(type) {
 		case Querier:
-			u.b.Join(v)
+			u.Join(v)
 		default:
-			u.b.Arg(v)
+			u.Arg(v)
 		}
 	}
 	if u.where != nil {
-		u.b.WriteString(" WHERE ")
-		u.b.Join(u.where)
+		u.WriteString(" WHERE ")
+		u.Join(u.where)
 	}
-	return u.b.String(), u.b.args
+	return u.String(), u.args
 }
 
 // DeleteBuilder is a builder for `DELETE` statement.
 type DeleteBuilder struct {
-	b     Builder
+	Builder
 	table string
 	where *Predicate
 }
@@ -781,14 +813,14 @@ func Delete(table string) *DeleteBuilder { return &DeleteBuilder{table: table} }
 // Where appends a where predicate to the `DELETE` statement.
 func (d *DeleteBuilder) Where(p *Predicate) *DeleteBuilder {
 	if d.where != nil {
-		d.where.merge(p)
+		d.where = And(d.where, p)
 	} else {
 		d.where = p
 	}
 	return d
 }
 
-// FromSelect make it possible to delete a sub query.
+// FromSelect makes it possible to delete a sub query.
 func (d *DeleteBuilder) FromSelect(s *Selector) *DeleteBuilder {
 	d.Where(s.where)
 	if table, _ := s.from.(*SelectTable); table != nil {
@@ -799,25 +831,29 @@ func (d *DeleteBuilder) FromSelect(s *Selector) *DeleteBuilder {
 
 // Query returns query representation of a `DELETE` statement.
 func (d *DeleteBuilder) Query() (string, []interface{}) {
-	d.b.WriteString("DELETE FROM ")
-	d.b.Append(d.table)
+	d.WriteString("DELETE FROM ")
+	d.Ident(d.table)
 	if d.where != nil {
-		d.b.WriteString(" WHERE ")
-		d.b.Join(d.where)
+		d.WriteString(" WHERE ")
+		d.Join(d.where)
 	}
-	return d.b.String(), d.b.args
+	return d.String(), d.args
 }
 
 // Predicate is a where predicate.
 type Predicate struct {
-	b Builder
+	Builder
+	depth int
+	fns   []func(*Builder)
 }
 
-// P creates a new predicates.
+// P creates a new predicate.
 //
 //	P().EQ("name", "a8m").And().EQ("age", 30)
 //
-func P() *Predicate { return &Predicate{} }
+func P(fns ...func(*Builder)) *Predicate {
+	return &Predicate{fns: fns}
+}
 
 // Or combines all given predicates with OR between them.
 //
@@ -825,20 +861,9 @@ func P() *Predicate { return &Predicate{} }
 //
 func Or(preds ...*Predicate) *Predicate {
 	p := P()
-	for i := range preds {
-		p.Or().b.Nested(func(b *Builder) {
-			b.Join(preds[i])
-		})
-	}
-	return p
-}
-
-// Or appends an OR only if it's not a start of expression.
-func (p *Predicate) Or() *Predicate {
-	if p.b.Len() > 0 {
-		p.b.WriteString(" OR ")
-	}
-	return p
+	return p.Append(func(b *Builder) {
+		p.mayWrap(preds, b, "OR")
+	})
 }
 
 // False appends the FALSE keyword to the predicate.
@@ -846,13 +871,14 @@ func (p *Predicate) Or() *Predicate {
 //	Delete().From("users").Where(False())
 //
 func False() *Predicate {
-	return (&Predicate{}).False()
+	return P().False()
 }
 
 // False appends FALSE to the predicate.
 func (p *Predicate) False() *Predicate {
-	p.b.WriteString("FALSE")
-	return p
+	return p.Append(func(b *Builder) {
+		b.WriteString("FALSE")
+	})
 }
 
 // Not wraps the given predicate with the not predicate.
@@ -860,135 +886,139 @@ func (p *Predicate) False() *Predicate {
 //	Not(Or(EQ("name", "foo"), EQ("name", "bar")))
 //
 func Not(pred *Predicate) *Predicate {
-	p := P()
-	p.Not().b.Nested(func(b *Builder) {
-		b.Join(pred)
+	return P().Not().Append(func(b *Builder) {
+		b.Nested(func(b *Builder) {
+			b.Join(pred)
+		})
 	})
-	return p
 }
 
 // Not appends NOT to the predicate.
 func (p *Predicate) Not() *Predicate {
-	p.b.WriteString("NOT ")
-	return p
+	return p.Append(func(b *Builder) {
+		b.WriteString("NOT ")
+	})
 }
 
 // And combines all given predicates with AND between them.
 func And(preds ...*Predicate) *Predicate {
 	p := P()
-	for i := range preds {
-		p.And().b.Nested(func(b *Builder) {
-			b.Join(preds[i])
-		})
-	}
-	return p
-}
-
-// And appends And only if it's not a start of expression.
-func (p *Predicate) And() *Predicate {
-	if p.b.Len() > 0 {
-		p.b.WriteString(" AND ")
-	}
-	return p
+	return p.Append(func(b *Builder) {
+		p.mayWrap(preds, b, "AND")
+	})
 }
 
 // EQ returns a "=" predicate.
 func EQ(col string, value interface{}) *Predicate {
-	return (&Predicate{}).EQ(col, value)
+	return P().EQ(col, value)
 }
 
 // EQ appends a "=" predicate.
 func (p *Predicate) EQ(col string, arg interface{}) *Predicate {
-	p.b.Append(col).WriteString(" = ")
-	p.b.Arg(arg)
-	return p
+	return p.Append(func(b *Builder) {
+		b.Ident(col)
+		b.WriteOp(OpEQ)
+		b.Arg(arg)
+	})
 }
 
 // NEQ returns a "<>" predicate.
 func NEQ(col string, value interface{}) *Predicate {
-	return (&Predicate{}).NEQ(col, value)
+	return P().NEQ(col, value)
 }
 
 // NEQ appends a "<>" predicate.
 func (p *Predicate) NEQ(col string, arg interface{}) *Predicate {
-	p.b.Append(col).WriteString(" <> ")
-	p.b.Arg(arg)
-	return p
+	return p.Append(func(b *Builder) {
+		b.Ident(col)
+		b.WriteOp(OpNEQ)
+		b.Arg(arg)
+	})
 }
 
 // LT returns a "<" predicate.
 func LT(col string, value interface{}) *Predicate {
-	return (&Predicate{}).LT(col, value)
+	return P().LT(col, value)
 }
 
 // LT appends a "<" predicate.
 func (p *Predicate) LT(col string, arg interface{}) *Predicate {
-	p.b.Append(col).WriteString(" < ")
-	p.b.Arg(arg)
-	return p
+	return p.Append(func(b *Builder) {
+		b.Ident(col)
+		p.WriteOp(OpLT)
+		b.Arg(arg)
+	})
 }
 
 // LTE returns a "<=" predicate.
 func LTE(col string, value interface{}) *Predicate {
-	return (&Predicate{}).LTE(col, value)
+	return P().LTE(col, value)
 }
 
 // LTE appends a "<=" predicate.
 func (p *Predicate) LTE(col string, arg interface{}) *Predicate {
-	p.b.Append(col).WriteString(" <= ")
-	p.b.Arg(arg)
-	return p
+	return p.Append(func(b *Builder) {
+		b.Ident(col)
+		p.WriteOp(OpLTE)
+		b.Arg(arg)
+	})
 }
 
 // GT returns a ">" predicate.
 func GT(col string, value interface{}) *Predicate {
-	return (&Predicate{}).GT(col, value)
+	return P().GT(col, value)
 }
 
 // GT appends a ">" predicate.
 func (p *Predicate) GT(col string, arg interface{}) *Predicate {
-	p.b.Append(col).WriteString(" > ")
-	p.b.Arg(arg)
-	return p
+	return p.Append(func(b *Builder) {
+		b.Ident(col)
+		p.WriteOp(OpGT)
+		b.Arg(arg)
+	})
 }
 
 // GTE returns a ">=" predicate.
 func GTE(col string, value interface{}) *Predicate {
-	return (&Predicate{}).GTE(col, value)
+	return P().GTE(col, value)
 }
 
 // GTE appends a ">=" predicate.
 func (p *Predicate) GTE(col string, arg interface{}) *Predicate {
-	p.b.Append(col).WriteString(" >= ")
-	p.b.Arg(arg)
-	return p
+	return p.Append(func(b *Builder) {
+		b.Ident(col)
+		p.WriteOp(OpGTE)
+		b.Arg(arg)
+	})
 }
 
 // NotNull returns the `IS NOT NULL` predicate.
 func NotNull(col string) *Predicate {
-	return (&Predicate{}).NotNull(col)
+	return P().NotNull(col)
 }
 
 // NotNull appends the `IS NOT NULL` predicate.
 func (p *Predicate) NotNull(col string) *Predicate {
-	p.b.Append(col).WriteString(" IS NOT NULL")
-	return p
+	return p.Append(func(b *Builder) {
+		b.Ident(col).WriteString(" IS NOT NULL")
+	})
 }
 
 // IsNull returns the `IS NULL` predicate.
 func IsNull(col string) *Predicate {
-	return (&Predicate{}).IsNull(col)
+	return P().IsNull(col)
 }
 
 // IsNull appends the `IS NULL` predicate.
 func (p *Predicate) IsNull(col string) *Predicate {
-	p.b.Append(col).WriteString(" IS NULL")
-	return p
+	return p.Append(func(b *Builder) {
+		b.Ident(col).WriteString(" IS NULL")
+	})
 }
 
 // In returns the `IN` predicate.
 func In(col string, args ...interface{}) *Predicate {
-	return (&Predicate{}).In(col, args...)
+	return P().In(col, args...)
 }
 
 // In appends the `IN` predicate.
@@ -996,20 +1026,26 @@ func (p *Predicate) In(col string, args ...interface{}) *Predicate {
 	if len(args) == 0 {
 		return p
 	}
-	p.b.Append(col).WriteString(" IN ")
-	p.b.Nested(func(b *Builder) {
-		if s, ok := args[0].(*Selector); ok {
-			b.Join(s)
-		} else {
-			b.Args(args...)
-		}
+	return p.Append(func(b *Builder) {
+		b.Ident(col).WriteOp(OpIn)
+		b.Nested(func(b *Builder) {
+			if s, ok := args[0].(*Selector); ok {
+				b.Join(s)
+			} else {
+				b.Args(args...)
+			}
+		})
 	})
-	return p
 }
 
 // InInts returns the `IN` predicate for ints.
 func InInts(col string, args ...int) *Predicate {
-	return (&Predicate{}).InInts(col, args...)
+	return P().InInts(col, args...)
+}
+
+// InValues adds the `IN` predicate for slice of driver.Value.
+func InValues(col string, args ...driver.Value) *Predicate {
+	return P().InValues(col, args...)
 }
 
 // InInts adds the `IN` predicate for ints.
@@ -1021,35 +1057,53 @@ func (p *Predicate) InInts(col string, args ...int) *Predicate {
 	return p.In(col, iface...)
 }
 
+// InValues adds the `IN` predicate for slice of driver.Value.
+func (p *Predicate) InValues(col string, args ...driver.Value) *Predicate {
+	iface := make([]interface{}, len(args))
+	for i := range args {
+		iface[i] = args[i]
+	}
+	return p.In(col, iface...)
+}
+
 // NotIn returns the `Not IN` predicate.
 func NotIn(col string, args ...interface{}) *Predicate {
-	return (&Predicate{}).NotIn(col, args...)
+	return P().NotIn(col, args...)
 }
 
 // NotIn appends the `Not IN` predicate.
 func (p *Predicate) NotIn(col string, args ...interface{}) *Predicate {
-	p.b.Append(col).WriteString(" NOT IN ")
-	p.b.Nested(func(b *Builder) {
-		b.Args(args...)
+	if len(args) == 0 {
+		return p
+	}
+	return p.Append(func(b *Builder) {
+		b.Ident(col).WriteOp(OpNotIn)
+		b.Nested(func(b *Builder) {
+			if s, ok := args[0].(*Selector); ok {
+				b.Join(s)
+			} else {
+				b.Args(args...)
+			}
+		})
 	})
-	return p
 }
 
 // Like returns the `LIKE` predicate.
 func Like(col, pattern string) *Predicate {
-	return (&Predicate{}).Like(col, pattern)
+	return P().Like(col, pattern)
 }
 
 // Like appends the `LIKE` predicate.
 func (p *Predicate) Like(col, pattern string) *Predicate {
-	p.b.Append(col).WriteString(" LIKE ")
-	p.b.Arg(pattern)
-	return p
+	return p.Append(func(b *Builder) {
+		b.Ident(col).WriteOp(OpLike)
+		b.Arg(pattern)
+	})
 }
 
 // HasPrefix is a helper predicate that checks prefix using the LIKE predicate.
 func HasPrefix(col, prefix string) *Predicate {
-	return (&Predicate{}).HasPrefix(col, prefix)
+	return P().HasPrefix(col, prefix)
 }
 
 // HasPrefix is a helper predicate that checks prefix using the LIKE predicate.
@@ -1058,7 +1112,7 @@ func (p *Predicate) HasPrefix(col, prefix string) *Predicate {
 }
 
 // HasSuffix is a helper predicate that checks suffix using the LIKE predicate.
-func HasSuffix(col, suffix string) *Predicate { return (&Predicate{}).HasSuffix(col, suffix) }
+func HasSuffix(col, suffix string) *Predicate { return P().HasSuffix(col, suffix) }
 
 // HasSuffix is a helper predicate that checks suffix using the LIKE predicate.
 func (p *Predicate) HasSuffix(col, suffix string) *Predicate {
@@ -1066,15 +1120,22 @@ func (p *Predicate) HasSuffix(col, suffix string) *Predicate {
 }
 
 // EqualFold is a helper predicate that applies the "=" predicate with case-folding.
-func EqualFold(col, sub string) *Predicate { return (&Predicate{}).EqualFold(col, sub) }
+func EqualFold(col, sub string) *Predicate { return P().EqualFold(col, sub) }
 
 // EqualFold is a helper predicate that applies the "=" predicate with case-folding.
 func (p *Predicate) EqualFold(col, sub string) *Predicate {
-	return p.EQ(Lower(col), strings.ToLower(sub))
+	return p.Append(func(b *Builder) {
+		f := &Func{}
+		f.SetDialect(b.dialect)
+		f.Lower(col)
+		b.WriteString(f.String())
+		b.WriteOp(OpEQ)
+		b.Arg(strings.ToLower(sub))
+	})
 }
 
 // Contains is a helper predicate that checks substring using the LIKE predicate.
-func Contains(col, sub string) *Predicate { return (&Predicate{}).Contains(col, sub) }
+func Contains(col, sub string) *Predicate { return P().Contains(col, sub) }
 
 // Contains is a helper predicate that checks substring using the LIKE predicate.
 func (p *Predicate) Contains(col, sub string) *Predicate {
@@ -1082,52 +1143,75 @@ func (p *Predicate) Contains(col, sub string) *Predicate {
 }
 
 // ContainsFold is a helper predicate that checks substring using the LIKE predicate.
-func ContainsFold(col, sub string) *Predicate { return (&Predicate{}).ContainsFold(col, sub) }
+func ContainsFold(col, sub string) *Predicate { return P().ContainsFold(col, sub) }
 
 // ContainsFold is a helper predicate that applies the LIKE predicate with case-folding.
-// The recommendation is to avoid using it, and to use a dialect specific feature, like
-// `ILIKE` in PostgreSQL, and `COLLATE` clause in MySQL.
 func (p *Predicate) ContainsFold(col, sub string) *Predicate {
-	return p.Like(Lower(col), "%"+strings.ToLower(sub)+"%")
+	return p.Append(func(b *Builder) {
+		f := &Func{}
+		f.SetDialect(b.dialect)
+		switch b.dialect {
+		case dialect.MySQL:
+			// We assume the CHARACTER SET is configured to utf8mb4,
+			// because this how it is defined in dialect/sql/schema.
+			b.Ident(col).WriteString(" COLLATE utf8mb4_general_ci LIKE ")
+		case dialect.Postgres:
+			b.Ident(col).WriteString(" ILIKE ")
+		default: // SQLite.
+			f.Lower(col)
+			b.WriteString(f.String()).WriteString(" LIKE ")
+		}
+		b.Arg("%" + strings.ToLower(sub) + "%")
+	})
 }
 
-// Lower wraps the given column with the LOWER function.
-//
-//	P().EQ(sql.Lower("name"), "a8m")
-//
-func Lower(name string) string {
-	var b Builder
-	b.WriteString("LOWER")
-	b.Nested(func(b *Builder) {
-		b.Append(name)
-	})
-	return b.String()
+// CompositeGT returns a comiposite ">" predicate
+func CompositeGT(columns []string, args ...interface{}) *Predicate {
+	return P().CompositeGT(columns, args...)
 }
 
-// Upper wraps the given column with the UPPER function.
-//
-//	P().EQ(sql.Upper("name"), "a8m")
-//
-func Upper(name string) string {
-	var b Builder
-	b.WriteString("UPPER")
-	b.Nested(func(b *Builder) {
-		b.Append(name)
+// CompositeLT returns a comiposite "<" predicate
+func CompositeLT(columns []string, args ...interface{}) *Predicate {
+	return P().CompositeLT(columns, args...)
+}
+
+func (p *Predicate) compositeP(operator string, columns []string, args ...interface{}) *Predicate {
+	return p.Append(func(b *Builder) {
+		b.Nested(func(nb *Builder) {
+			nb.IdentComma(columns...)
+		})
+		b.WriteString(operator)
+		b.WriteString("(")
+		b.Args(args...)
+		b.WriteString(")")
 	})
-	return b.String()
+}
+
+// CompositeGT returns a composite ">" predicate.
+func (p *Predicate) CompositeGT(columns []string, args ...interface{}) *Predicate {
+	const operator = " > "
+	return p.compositeP(operator, columns, args...)
+}
+
+// CompositeLT appends a composite "<" predicate.
+func (p *Predicate) CompositeLT(columns []string, args ...interface{}) *Predicate {
+	const operator = " < "
+	return p.compositeP(operator, columns, args...)
+}
+
+// Append appends a new function to the predicate callbacks.
+// The callback list are executed on call to Query.
+func (p *Predicate) Append(f func(*Builder)) *Predicate {
+	p.fns = append(p.fns, f)
+	return p
 }
 
 // Query returns query representation of a predicate.
 func (p *Predicate) Query() (string, []interface{}) {
-	return p.b.String(), p.b.args
-}
-
-// merge two predicates.
-func (p *Predicate) merge(pred *Predicate) *Predicate {
-	query, args := pred.Query()
-	p.And().b.WriteString(query)
-	p.b.args = append(p.b.args, args...)
-	return p
+	for _, f := range p.fns {
+		f(&p.Builder)
+	}
+	return p.String(), p.args
 }
 
 // clone returns a shallow clone of p.
@@ -1135,7 +1219,159 @@ func (p *Predicate) clone() *Predicate {
 	if p == nil {
 		return p
 	}
-	return &Predicate{p.b.clone()}
+	return &Predicate{fns: append([]func(*Builder){}, p.fns...)}
+}
+
+func (p *Predicate) mayWrap(preds []*Predicate, b *Builder, op string) {
+	switch n := len(preds); {
+	case n == 1:
+		b.Join(preds[0])
+		return
+	case n > 1 && p.depth != 0:
+		b.WriteByte('(')
+		defer b.WriteByte(')')
+	}
+	for i := range preds {
+		preds[i].depth = p.depth + 1
+		if i > 0 {
+			b.WriteByte(' ')
+			b.WriteString(op)
+			b.WriteByte(' ')
+		}
+		if len(preds[i].fns) > 1 {
+			b.Nested(func(b *Builder) {
+				b.Join(preds[i])
+			})
+		} else {
+			b.Join(preds[i])
+		}
+	}
+}
+
+// Func represents an SQL function.
+type Func struct {
+	Builder
+	fns []func(*Builder)
+}
+
+// Lower wraps the given column with the LOWER function.
+//
+//	P().EQ(sql.Lower("name"), "a8m")
+//
+func Lower(ident string) string {
+	f := &Func{}
+	f.Lower(ident)
+	return f.String()
+}
+
+// Lower wraps the given ident with the LOWER function.
+func (f *Func) Lower(ident string) {
+	f.byName("LOWER", ident)
+}
+
+// Count wraps the ident with the COUNT aggregation function.
+func Count(ident string) string {
+	f := &Func{}
+	f.Count(ident)
+	return f.String()
+}
+
+// Count wraps the ident with the COUNT aggregation function.
+func (f *Func) Count(ident string) {
+	f.byName("COUNT", ident)
+}
+
+// Max wraps the ident with the MAX aggregation function.
+func Max(ident string) string {
+	f := &Func{}
+	f.Max(ident)
+	return f.String()
+}
+
+// Max wraps the ident with the MAX aggregation function.
+func (f *Func) Max(ident string) {
+	f.byName("MAX", ident)
+}
+
+// Min wraps the ident with the MIN aggregation function.
+func Min(ident string) string {
+	f := &Func{}
+	f.Min(ident)
+	return f.String()
+}
+
+// Min wraps the ident with the MIN aggregation function.
+func (f *Func) Min(ident string) {
+	f.byName("MIN", ident)
+}
+
+// Sum wraps the ident with the SUM aggregation function.
+func Sum(ident string) string {
+	f := &Func{}
+	f.Sum(ident)
+	return f.String()
+}
+
+// Sum wraps the ident with the SUM aggregation function.
+func (f *Func) Sum(ident string) {
+	f.byName("SUM", ident)
+}
+
+// Avg wraps the ident with the AVG aggregation function.
+func Avg(ident string) string {
+	f := &Func{}
+	f.Avg(ident)
+	return f.String()
+}
+
+// Avg wraps the ident with the AVG aggregation function.
+func (f *Func) Avg(ident string) {
+	f.byName("AVG", ident)
+}
+
+// byName wraps an identifier with a function name.
+func (f *Func) byName(fn, ident string) {
+	f.Append(func(b *Builder) {
+		f.WriteString(fn)
+		f.Nested(func(b *Builder) {
+			b.Ident(ident)
+		})
+	})
+}
+
+// Append appends a new function to the function callbacks.
+// The callback list are executed on call to String.
+func (f *Func) Append(fn func(*Builder)) *Func {
+	f.fns = append(f.fns, fn)
+	return f
+}
+
+// String implements the fmt.Stringer.
+func (f *Func) String() string {
+	for _, fn := range f.fns {
+		fn(&f.Builder)
+	}
+	return f.Builder.String()
+}
+
+// As suffixed the given column with an alias (`a` AS `b`).
+func As(ident string, as string) string {
+	b := &Builder{}
+	b.fromIdent(ident)
+	b.Ident(ident).Pad().WriteString("AS")
+	b.Pad().Ident(as)
+	return b.String()
+}
+
+// Distinct prefixed the given columns with the `DISTINCT` keyword (DISTINCT `id`).
+func Distinct(idents ...string) string {
+	b := &Builder{}
+	if len(idents) > 0 {
+		b.fromIdent(idents[0])
+	}
+	b.WriteString("DISTINCT")
+	b.Pad().IdentComma(idents...)
+	return b.String()
 }
 
 // TableView is a view that returns a table view. Can ne a Table, Selector or a View (WITH statement).
@@ -1143,52 +1379,13 @@ type TableView interface {
 	view()
 }
 
-// Count wraps the column with the COUNT aggregation function.
-func Count(column string) string {
-	return agg("COUNT", column)
-}
-
-// Max wraps the column with the MAX aggregation function.
-func Max(column string) string {
-	return agg("MAX", column)
-}
-
-// Min wraps the column with the MIN aggregation function.
-func Min(column string) string {
-	return agg("MIN", column)
-}
-
-// Sum wraps the column with the SUM aggregation function.
-func Sum(column string) string {
-	return agg("SUM", column)
-}
-
-// Avg wraps the column with the AVG aggregation function.
-func Avg(column string) string {
-	return agg("AVG", column)
-}
-
-// As suffixed the given column with an alias (`a` AS `b`).
-func As(column string, as string) string {
-	var b Builder
-	b.Append(column).Pad().WriteString("AS")
-	b.Pad().Append(as)
-	return b.String()
-}
-
-// Distinct prefixed the given columns with the `DISTINCT` keyword (DISTINCT `id`).
-func Distinct(columns ...string) string {
-	var b Builder
-	b.WriteString("DISTINCT")
-	b.Pad().AppendComma(columns...)
-	return b.String()
-}
-
 // SelectTable is a table selector.
 type SelectTable struct {
-	quote bool
-	name  string
-	as    string
+	Builder
+	as     string
+	name   string
+	schema string
+	quote  bool
 }
 
 // Table returns a new table selector.
@@ -1198,6 +1395,12 @@ type SelectTable struct {
 //
 func Table(name string) *SelectTable {
 	return &SelectTable{quote: true, name: name}
+}
+
+// Schema sets the schema name of the table.
+func (s *SelectTable) Schema(name string) *SelectTable {
+	s.schema = name
+	return s
 }
 
 // As adds the AS clause to the table selector.
@@ -1212,12 +1415,17 @@ func (s *SelectTable) C(column string) string {
 	if s.as != "" {
 		name = s.as
 	}
-	return fmt.Sprintf("`%s`.`%s`", name, column)
+	b := &Builder{dialect: s.dialect}
+	if s.schema != "" && s.as == "" {
+		b.Ident(s.schema).WriteByte('.')
+	}
+	b.Ident(name).WriteByte('.').Ident(column)
+	return b.String()
 }
 
 // Columns returns a list of formatted strings for the table columns.
 func (s *SelectTable) Columns(columns ...string) []string {
-	var names []string
+	names := make([]string, 0, len(columns))
 	for _, c := range columns {
 		names = append(names, s.C(c))
 	}
@@ -1234,14 +1442,19 @@ func (s *SelectTable) Unquote() *SelectTable {
 
 // ref returns the table reference.
 func (s *SelectTable) ref() string {
-	switch {
-	case !s.quote:
+	if !s.quote {
 		return s.name
-	case s.as == "":
-		return fmt.Sprintf("`%s`", s.name)
-	default:
-		return fmt.Sprintf("`%s` AS `%s`", s.name, s.as)
 	}
+	b := &Builder{dialect: s.dialect}
+	if s.schema != "" {
+		b.Ident(s.schema).WriteByte('.')
+	}
+	b.Ident(s.name)
+	if s.as != "" {
+		b.WriteString(" AS ")
+		b.Ident(s.as)
+	}
+	return b.String()
 }
 
 // implement the table view.
@@ -1249,13 +1462,23 @@ func (*SelectTable) view() {}
 
 // join table option.
 type join struct {
-	on    string
+	on    *Predicate
 	kind  string
 	table TableView
 }
 
-// Selector a builder for the `SELECT` statement.
+// clone a joiner.
+func (j join) clone() join {
+	if sel, ok := j.table.(*Selector); ok {
+		j.table = sel.Clone()
+	}
+	j.on = j.on.clone()
+	return j
+}
+
+// Selector is a builder for the `SELECT` statement.
 type Selector struct {
+	Builder
 	as       string
 	columns  []string
 	from     TableView
@@ -1294,12 +1517,21 @@ func (s *Selector) Select(columns ...string) *Selector {
 // From sets the source of `FROM` clause.
 func (s *Selector) From(t TableView) *Selector {
 	s.from = t
+	if st, ok := t.(state); ok {
+		st.SetDialect(s.dialect)
+	}
 	return s
 }
 
 // Distinct adds the DISTINCT keyword to the `SELECT` statement.
 func (s *Selector) Distinct() *Selector {
 	s.distinct = true
+	return s
+}
+
+// SetDistinct sets explicitly if the returned rows are distinct or indistinct.
+func (s *Selector) SetDistinct(v bool) *Selector {
+	s.distinct = v
 	return s
 }
 
@@ -1328,8 +1560,21 @@ func (s *Selector) Where(p *Predicate) *Selector {
 		s.where = Or(s.where, p)
 		s.or = false
 	default:
-		s.where.merge(p)
+		s.where = And(s.where, p)
 	}
+	return s
+}
+
+// P returns the predicate of a selector.
+func (s *Selector) P() *Predicate {
+	return s.where
+}
+
+// SetP sets explicitly the predicate function for the selector and clear its previous state.
+func (s *Selector) SetP(p *Predicate) *Selector {
+	s.where = p
+	s.or = false
+	s.not = false
 	return s
 }
 
@@ -1358,8 +1603,23 @@ func (s *Selector) Table() *SelectTable {
 
 // Join appends a `JOIN` clause to the statement.
 func (s *Selector) Join(t TableView) *Selector {
+	return s.join("JOIN", t)
+}
+
+// LeftJoin appends a `LEFT JOIN` clause to the statement.
+func (s *Selector) LeftJoin(t TableView) *Selector {
+	return s.join("LEFT JOIN", t)
+}
+
+// RightJoin appends a `RIGHT JOIN` clause to the statement.
+func (s *Selector) RightJoin(t TableView) *Selector {
+	return s.join("RIGHT JOIN", t)
+}
+
+// join adds a join table to the selector with the given kind.
+func (s *Selector) join(kind string, t TableView) *Selector {
 	s.joins = append(s.joins, join{
-		kind:  "JOIN",
+		kind:  kind,
 		table: t,
 	})
 	switch view := t.(type) {
@@ -1372,31 +1632,52 @@ func (s *Selector) Join(t TableView) *Selector {
 			view.as = "t" + strconv.Itoa(len(s.joins))
 		}
 	}
+	if st, ok := t.(state); ok {
+		st.SetDialect(s.dialect)
+	}
 	return s
 }
 
 // C returns a formatted string for a selected column from this statement.
 func (s *Selector) C(column string) string {
 	if s.as != "" {
-		return fmt.Sprintf("`%s`.`%s`", s.as, column)
+		b := &Builder{dialect: s.dialect}
+		b.Ident(s.as)
+		b.WriteByte('.')
+		b.Ident(column)
+		return b.String()
 	}
 	return s.Table().C(column)
 }
 
 // Columns returns a list of formatted strings for a selected columns from this statement.
 func (s *Selector) Columns(columns ...string) []string {
-	var names []string
+	names := make([]string, 0, len(columns))
 	for _, c := range columns {
 		names = append(names, s.C(c))
 	}
 	return names
 }
 
+// OnP sets or appends the given predicate for the `ON` clause of the statement.
+func (s *Selector) OnP(p *Predicate) *Selector {
+	if len(s.joins) > 0 {
+		join := &s.joins[len(s.joins)-1]
+		switch {
+		case join.on == nil:
+			join.on = p
+		default:
+			join.on = And(join.on, p)
+		}
+	}
+	return s
+}
+
 // On sets the `ON` clause for the `JOIN` operation.
 func (s *Selector) On(c1, c2 string) *Selector {
-	if len(s.joins) > 0 {
-		s.joins[len(s.joins)-1].on = fmt.Sprintf("%s = %s", c1, c2)
-	}
+	s.OnP(P(func(builder *Builder) {
+		builder.Ident(c1).WriteOp(OpEQ).Ident(c2)
+	}))
 	return s
 }
 
@@ -1410,8 +1691,8 @@ func (s *Selector) As(alias string) *Selector {
 func (s *Selector) Count(columns ...string) *Selector {
 	column := "*"
 	if len(columns) > 0 {
-		var b Builder
-		b.AppendComma(columns...)
+		b := &Builder{}
+		b.IdentComma(columns...)
 		column = b.String()
 	}
 	s.columns = []string{Count(column)}
@@ -1424,7 +1705,12 @@ func (s *Selector) Clone() *Selector {
 	if s == nil {
 		return nil
 	}
+	joins := make([]join, len(s.joins))
+	for i := range s.joins {
+		joins[i] = s.joins[i].clone()
+	}
 	return &Selector{
+		Builder:  s.Builder.clone(),
 		as:       s.as,
 		or:       s.or,
 		not:      s.not,
@@ -1434,7 +1720,7 @@ func (s *Selector) Clone() *Selector {
 		distinct: s.distinct,
 		where:    s.where.clone(),
 		having:   s.having.clone(),
-		joins:    append([]join{}, s.joins...),
+		joins:    append([]join{}, joins...),
 		group:    append([]string{}, s.group...),
 		order:    append([]string{}, s.order...),
 		columns:  append([]string{}, s.columns...),
@@ -1443,15 +1729,15 @@ func (s *Selector) Clone() *Selector {
 
 // Asc adds the ASC suffix for the given column.
 func Asc(column string) string {
-	var b Builder
-	b.Append(column).WriteString(" ASC")
+	b := &Builder{}
+	b.Ident(column).WriteString(" ASC")
 	return b.String()
 }
 
 // Desc adds the DESC suffix for the given column.
 func Desc(column string) string {
-	var b Builder
-	b.Append(column).WriteString(" DESC")
+	b := &Builder{}
+	b.Ident(column).WriteString(" DESC")
 	return b.String()
 }
 
@@ -1475,68 +1761,73 @@ func (s *Selector) Having(p *Predicate) *Selector {
 
 // Query returns query representation of a `SELECT` statement.
 func (s *Selector) Query() (string, []interface{}) {
-	var b Builder
+	b := s.Builder.clone()
 	b.WriteString("SELECT ")
 	if s.distinct {
 		b.WriteString("DISTINCT ")
 	}
 	if len(s.columns) > 0 {
-		b.AppendComma(s.columns...)
+		b.IdentComma(s.columns...)
 	} else {
 		b.WriteString("*")
 	}
 	b.WriteString(" FROM ")
 	switch t := s.from.(type) {
 	case *SelectTable:
+		t.SetDialect(s.dialect)
 		b.WriteString(t.ref())
 	case *Selector:
-		query, args := t.Query()
-		b.WriteString(fmt.Sprintf("(%s) AS `%s`", query, t.as))
-		b.args = append(b.args, args...)
+		t.SetDialect(s.dialect)
+		b.Nested(func(b *Builder) {
+			b.Join(t)
+		})
+		b.WriteString(" AS ")
+		b.Ident(t.as)
 	}
 	for _, join := range s.joins {
-		b.WriteString(fmt.Sprintf(" %s ", join.kind))
+		b.WriteString(" " + join.kind + " ")
 		switch view := join.table.(type) {
 		case *SelectTable:
+			view.SetDialect(s.dialect)
 			b.WriteString(view.ref())
 		case *Selector:
-			query, args := view.Query()
-			b.WriteString(fmt.Sprintf("(%s) AS `%s`", query, view.as))
-			b.args = append(b.args, args...)
+			view.SetDialect(s.dialect)
+			b.Nested(func(b *Builder) {
+				b.Join(view)
+			})
+			b.WriteString(" AS ")
+			b.Ident(view.as)
 		}
-		if join.on != "" {
+		if join.on != nil {
 			b.WriteString(" ON ")
-			b.WriteString(join.on)
+			b.Join(join.on)
 		}
 	}
 	if s.where != nil {
 		b.WriteString(" WHERE ")
-		query, args := s.where.Query()
-		b.WriteString(query)
-		b.args = append(b.args, args...)
+		b.Join(s.where)
 	}
 	if len(s.group) > 0 {
 		b.WriteString(" GROUP BY ")
-		b.AppendComma(s.group...)
+		b.IdentComma(s.group...)
 	}
 	if s.having != nil {
 		b.WriteString(" HAVING ")
-		query, args := s.where.Query()
-		b.WriteString(query)
-		b.args = append(b.args, args...)
+		b.Join(s.having)
 	}
 	if len(s.order) > 0 {
 		b.WriteString(" ORDER BY ")
-		b.AppendComma(s.order...)
+		b.IdentComma(s.order...)
 	}
 	if s.limit != nil {
 		b.WriteString(" LIMIT ")
-		b.Arg(*s.limit)
+		b.WriteString(strconv.Itoa(*s.limit))
 	}
 	if s.offset != nil {
 		b.WriteString(" OFFSET ")
-		b.Arg(*s.offset)
+		b.WriteString(strconv.Itoa(*s.offset))
 	}
+	s.total = b.total
 	return b.String(), b.args
 }
 
@@ -1545,7 +1836,7 @@ func (*Selector) view() {}
 
 // WithBuilder is the builder for the `WITH` statement.
 type WithBuilder struct {
-	b    Builder
+	Builder
 	name string
 	s    *Selector
 }
@@ -1570,12 +1861,11 @@ func (w *WithBuilder) As(s *Selector) *WithBuilder {
 
 // Query returns query representation of a `WITH` clause.
 func (w *WithBuilder) Query() (string, []interface{}) {
-	w.b.WriteString("WITH " + w.name)
-	w.b.WriteString(" AS ")
-	w.b.Nested(func(b *Builder) {
+	w.WriteString(fmt.Sprintf("WITH %s AS ", w.name))
+	w.Nested(func(b *Builder) {
 		b.Join(w.s)
 	})
-	return w.b.String(), w.b.args
+	return w.String(), w.args
 }
 
 // implement the table view interface.
@@ -1594,6 +1884,37 @@ func (w *Wrapper) Query() (string, []interface{}) {
 	return fmt.Sprintf(w.format, query), args
 }
 
+// SetDialect calls SetDialect on the wrapped query.
+func (w *Wrapper) SetDialect(name string) {
+	if s, ok := w.wrapped.(state); ok {
+		s.SetDialect(name)
+	}
+}
+
+// Dialect calls Dialect on the wrapped query.
+func (w *Wrapper) Dialect() string {
+	if s, ok := w.wrapped.(state); ok {
+		return s.Dialect()
+	}
+	return ""
+}
+
+// Total returns the total number of arguments so far.
+func (w *Wrapper) Total() int {
+	if s, ok := w.wrapped.(state); ok {
+		return s.Total()
+	}
+	return 0
+}
+
+// SetTotal sets the value of the total arguments.
+// Used to pass this information between sub queries/expressions.
+func (w *Wrapper) SetTotal(total int) {
+	if s, ok := w.wrapped.(state); ok {
+		s.SetTotal(total)
+	}
+}
+
 // Raw returns a raw sql Querier that is placed as-is in the query.
 func Raw(s string) Querier { return &raw{s} }
 
@@ -1601,24 +1922,488 @@ type raw struct{ s string }
 
 func (r *raw) Query() (string, []interface{}) { return r.s, nil }
 
+// Queries are list of queries join with space between them.
+type Queries []Querier
+
+// Query returns query representation of Queriers.
+func (n Queries) Query() (string, []interface{}) {
+	b := &Builder{}
+	for i := range n {
+		if i > 0 {
+			b.Pad()
+		}
+		query, args := n[i].Query()
+		b.WriteString(query)
+		b.args = append(b.args, args...)
+	}
+	return b.String(), b.args
+}
+
+// Builder is the base query builder for the sql dsl.
+type Builder struct {
+	bytes.Buffer               // underlying buffer.
+	dialect      string        // configured dialect.
+	args         []interface{} // query parameters.
+	total        int           // total number of parameters in query tree.
+	errs         []error       // errors that added during the query construction.
+}
+
+// Quote quotes the given identifier with the characters based
+// on the configured dialect. It defaults to "`".
+func (b *Builder) Quote(ident string) string {
+	switch {
+	case b.postgres():
+		// If it was quoted with the wrong
+		// identifier character.
+		if strings.Contains(ident, "`") {
+			return strings.ReplaceAll(ident, "`", `"`)
+		}
+		return strconv.Quote(ident)
+	// An identifier for unknown dialect.
+	case b.dialect == "" && strings.ContainsAny(ident, "`\""):
+		return ident
+	default:
+		return fmt.Sprintf("`%s`", ident)
+	}
+}
+
+// Ident appends the given string as an identifier.
+func (b *Builder) Ident(s string) *Builder {
+	switch {
+	case len(s) == 0:
+	case s != "*" && !b.isIdent(s) && !isFunc(s) && !isModifier(s):
+		b.WriteString(b.Quote(s))
+	case (isFunc(s) || isModifier(s)) && b.postgres():
+		// Modifiers and aggregation functions that
+		// were called without dialect information.
+		b.WriteString(strings.ReplaceAll(s, "`", `"`))
+	default:
+		b.WriteString(s)
+	}
+	return b
+}
+
+// IdentComma calls Ident on all arguments and adds a comma between them.
+func (b *Builder) IdentComma(s ...string) *Builder {
+	for i := range s {
+		if i > 0 {
+			b.Comma()
+		}
+		b.Ident(s[i])
+	}
+	return b
+}
+
+// WriteByte wraps the Buffer.WriteByte to make it chainable with other methods.
+func (b *Builder) WriteByte(c byte) *Builder {
+	b.Buffer.WriteByte(c)
+	return b
+}
+
+// WriteString wraps the Buffer.WriteString to make it chainable with other methods.
+func (b *Builder) WriteString(s string) *Builder {
+	b.Buffer.WriteString(s)
+	return b
+}
+
+// AddError appends an error to the builder errors.
+func (b *Builder) AddError(err error) *Builder {
+	b.errs = append(b.errs, err)
+	return b
+}
+
+// Err returns a concatenated error of all errors encountered during
+// the query-building, or were added manually by calling AddError.
+func (b *Builder) Err() error {
+	if len(b.errs) == 0 {
+		return nil
+	}
+	br := strings.Builder{}
+	for i := range b.errs {
+		if i > 0 {
+			br.WriteString("; ")
+		}
+		br.WriteString(b.errs[i].Error())
+	}
+	return fmt.Errorf(br.String())
+}
+
+// An Op represents a predicate operator.
+type Op int
+
+// Predicate operators
+const (
+	OpEQ      Op = iota // logical and.
+	OpNEQ               // <>
+	OpGT                // >
+	OpGTE               // >=
+	OpLT                // <
+	OpLTE               // <=
+	OpIn                // IN
+	OpNotIn             // NOT IN
+	OpLike              // LIKE
+	OpIsNull            // IS NULL
+	OpNotNull           // IS NOT NULL
+)
+
+var ops = [...]string{
+	OpEQ:      "=",
+	OpNEQ:     "<>",
+	OpGT:      ">",
+	OpGTE:     ">=",
+	OpLT:      "<",
+	OpLTE:     "<=",
+	OpIn:      "IN",
+	OpNotIn:   "NOT IN",
+	OpLike:    "LIKE",
+	OpIsNull:  "IS NULL",
+	OpNotNull: "IS NOT NULL",
+}
+
+// WriteOp writes an operator to the builder.
+func (b *Builder) WriteOp(op Op) *Builder {
+	switch {
+	case op >= OpEQ && op <= OpLike:
+		b.Pad().WriteString(ops[op]).Pad()
+	case op == OpIsNull || op == OpNotNull:
+		b.Pad().WriteString(ops[op])
+	default:
+		panic(fmt.Sprintf("invalid op %d", op))
+	}
+	return b
+}
+
+// Arg appends an input argument to the builder.
+func (b *Builder) Arg(a interface{}) *Builder {
+	if r, ok := a.(*raw); ok {
+		b.WriteString(r.s)
+		return b
+	}
+	b.total++
+	b.args = append(b.args, a)
+	switch {
+	case b.postgres():
+		// PostgreSQL arguments are referenced using the syntax $n.
+		// $1 refers to the 1st argument, $2 to the 2nd, and so on.
+		b.WriteString("$" + strconv.Itoa(b.total))
+	default:
+		b.WriteString("?")
+	}
+	return b
+}
+
+// Args appends a list of arguments to the builder.
+func (b *Builder) Args(a ...interface{}) *Builder {
+	for i := range a {
+		if i > 0 {
+			b.Comma()
+		}
+		b.Arg(a[i])
+	}
+	return b
+}
+
+// Comma adds a comma to the query.
+func (b *Builder) Comma() *Builder {
+	b.WriteString(", ")
+	return b
+}
+
+// Pad adds a space to the query.
+func (b *Builder) Pad() *Builder {
+	b.WriteString(" ")
+	return b
+}
+
+// Join joins a list of Queries to the builder.
+func (b *Builder) Join(qs ...Querier) *Builder {
+	return b.join(qs, "")
+}
+
+// JoinComma joins a list of Queries and adds comma between them.
+func (b *Builder) JoinComma(qs ...Querier) *Builder {
+	return b.join(qs, ", ")
+}
+
+// join joins a list of Queries to the builder with a given separator.
+func (b *Builder) join(qs []Querier, sep string) *Builder {
+	for i, q := range qs {
+		if i > 0 {
+			b.WriteString(sep)
+		}
+		st, ok := q.(state)
+		if ok {
+			st.SetDialect(b.dialect)
+			st.SetTotal(b.total)
+		}
+		query, args := q.Query()
+		b.WriteString(query)
+		b.args = append(b.args, args...)
+		b.total = len(b.args)
+		if ok {
+			b.total = st.Total()
+		}
+	}
+	return b
+}
+
+// Nested gets a callback, and wraps its result with parentheses.
+func (b *Builder) Nested(f func(*Builder)) *Builder {
+	nb := &Builder{dialect: b.dialect, total: b.total}
+	nb.WriteByte('(')
+	f(nb)
+	nb.WriteByte(')')
+	nb.WriteTo(b)
+	b.args = append(b.args, nb.args...)
+	b.total = nb.total
+	return b
+}
+
+// SetDialect sets the builder dialect. It's used for garnering dialect specific queries.
+func (b *Builder) SetDialect(dialect string) {
+	b.dialect = dialect
+}
+
+// Dialect returns the dialect of the builder.
+func (b Builder) Dialect() string {
+	return b.dialect
+}
+
+// Total returns the total number of arguments so far.
+func (b Builder) Total() int {
+	return b.total
+}
+
+// SetTotal sets the value of the total arguments.
+// Used to pass this information between sub queries/expressions.
+func (b *Builder) SetTotal(total int) {
+	b.total = total
+}
+
+// Query implements the Querier interface.
+func (b Builder) Query() (string, []interface{}) {
+	return b.String(), b.args
+}
+
+// clone returns a shallow clone of a builder.
+func (b Builder) clone() Builder {
+	c := Builder{dialect: b.dialect, total: b.total}
+	if len(b.args) > 0 {
+		c.args = append(c.args, b.args...)
+	}
+	c.Buffer.Write(b.Bytes())
+	return c
+}
+
+// postgres reports if the builder dialect is PostgreSQL.
+func (b Builder) postgres() bool {
+	return b.Dialect() == dialect.Postgres
+}
+
+// fromIdent sets the builder dialect from the identifier format.
+func (b *Builder) fromIdent(ident string) {
+	if strings.Contains(ident, `"`) {
+		b.SetDialect(dialect.Postgres)
+	}
+	// otherwise, use the default.
+}
+
+// isIdent reports if the given string is a dialect identifier.
+func (b *Builder) isIdent(s string) bool {
+	switch {
+	case b.postgres():
+		return strings.Contains(s, `"`)
+	default:
+		return strings.Contains(s, "`")
+	}
+}
+
+// state wraps the all methods for setting and getting
+// update state between all queries in the query tree.
+type state interface {
+	Dialect() string
+	SetDialect(string)
+	Total() int
+	SetTotal(int)
+}
+
+// DialectBuilder prefixes all root builders with the `Dialect` constructor.
+type DialectBuilder struct {
+	dialect string
+}
+
+// Dialect creates a new DialectBuilder with the given dialect name.
+func Dialect(name string) *DialectBuilder {
+	return &DialectBuilder{name}
+}
+
+// Describe creates a DescribeBuilder for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		Describe("users")
+//
+func (d *DialectBuilder) Describe(name string) *DescribeBuilder {
+	b := Describe(name)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// CreateTable creates a TableBuilder for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		CreateTable("users").
+//			Columns(
+//				Column("id").Type("int").Attr("auto_increment"),
+//				Column("name").Type("varchar(255)"),
+//			).
+//			PrimaryKey("id")
+//
+func (d *DialectBuilder) CreateTable(name string) *TableBuilder {
+	b := CreateTable(name)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// AlterTable creates a TableAlter for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		AlterTable("users").
+//		AddColumn(Column("group_id").Type("int").Attr("UNIQUE")).
+//		AddForeignKey(ForeignKey().Columns("group_id").
+//			Reference(Reference().Table("groups").Columns("id")).
+//			OnDelete("CASCADE"),
+//		)
+//
+func (d *DialectBuilder) AlterTable(name string) *TableAlter {
+	b := AlterTable(name)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// AlterIndex creates an IndexAlter for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		AlterIndex("old").
+//		Rename("new")
+//
+func (d *DialectBuilder) AlterIndex(name string) *IndexAlter {
+	b := AlterIndex(name)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// Column creates a ColumnBuilder for the configured dialect.
+//
+//	Dialect(dialect.Postgres)..
+//		Column("group_id").Type("int").Attr("UNIQUE")
+//
+func (d *DialectBuilder) Column(name string) *ColumnBuilder {
+	b := Column(name)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// Insert creates a InsertBuilder for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		Insert("users").Columns("age").Values(1)
+//
+func (d *DialectBuilder) Insert(table string) *InsertBuilder {
+	b := Insert(table)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// Update creates a UpdateBuilder for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		Update("users").Set("name", "foo")
+//
+func (d *DialectBuilder) Update(table string) *UpdateBuilder {
+	b := Update(table)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// Delete creates a DeleteBuilder for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		Delete().From("users")
+//
+func (d *DialectBuilder) Delete(table string) *DeleteBuilder {
+	b := Delete(table)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// Select creates a Selector for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		Select().From(Table("users"))
+//
+func (d *DialectBuilder) Select(columns ...string) *Selector {
+	b := Select(columns...)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// Table creates a SelectTable for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		Table("users").As("u")
+//
+func (d *DialectBuilder) Table(name string) *SelectTable {
+	b := Table(name)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// With creates a WithBuilder for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		With("users_view").
+//		As(Select().From(Table("users")))
+//
+func (d *DialectBuilder) With(name string) *WithBuilder {
+	b := With(name)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// CreateIndex creates a IndexBuilder for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		CreateIndex("unique_name").
+//		Unique().
+//		Table("users").
+//		Columns("first", "last")
+//
+func (d *DialectBuilder) CreateIndex(name string) *IndexBuilder {
+	b := CreateIndex(name)
+	b.SetDialect(d.dialect)
+	return b
+}
+
+// DropIndex creates a DropIndexBuilder for the configured dialect.
+//
+//	Dialect(dialect.Postgres).
+//		DropIndex("name")
+//
+func (d *DialectBuilder) DropIndex(name string) *DropIndexBuilder {
+	b := DropIndex(name)
+	b.SetDialect(d.dialect)
+	return b
+}
+
 func isFunc(s string) bool {
 	return strings.Contains(s, "(") && strings.Contains(s, ")")
 }
 
 func isModifier(s string) bool {
-	for _, m := range []string{"DISTINCT", "ALL", "WITH ROLLUP"} {
+	for _, m := range [...]string{"DISTINCT", "ALL", "WITH ROLLUP"} {
 		if strings.HasPrefix(s, m) {
 			return true
 		}
 	}
 	return false
-}
-
-func agg(fn, column string) string {
-	var b Builder
-	b.WriteString(fn)
-	b.Nested(func(b *Builder) {
-		b.Append(column)
-	})
-	return b.String()
 }

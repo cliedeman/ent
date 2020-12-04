@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
-	"text/template"
 
-	"github.com/facebookincubator/ent/entc/load"
-	"github.com/facebookincubator/ent/schema/field"
+	"github.com/facebook/ent/entc/load"
+	"github.com/facebook/ent/schema/field"
 
 	"github.com/stretchr/testify/require"
 )
@@ -47,7 +47,8 @@ var (
 		},
 	}
 	T2 = &load.Schema{
-		Name: "T2",
+		Name:        "T2",
+		Annotations: dict("GQL", map[string]string{"Name": "T2"}),
 		Fields: []*load.Field{
 			{Name: "active", Info: &field.TypeInfo{Type: field.TypeBool}},
 		},
@@ -57,16 +58,17 @@ var (
 			{Name: "t1_o2m", Type: "T1", RefName: "t2_m2o", Inverse: true},
 			{Name: "t1_m2o", Type: "T1", RefName: "t2_o2m", Unique: true, Inverse: true},
 			{Name: "t1_m2m", Type: "T1", RefName: "t2_m2m", Inverse: true},
+			{Name: "t2_m2m_from", Type: "T2", Ref: &load.Edge{Name: "t2_m2m_to", Type: "T2", Annotations: dict("GQL", map[string]string{"Name": "To"})}, Inverse: true, Annotations: dict("GQL", map[string]string{"Name": "From"})},
 		},
 	}
 )
 
 func TestNewGraph(t *testing.T) {
 	require := require.New(t)
-	_, err := NewGraph(Config{Package: "entc/gen", Storage: drivers}, T1)
+	_, err := NewGraph(&Config{Package: "entc/gen", Storage: drivers[0]}, T1)
 	require.Error(err, "should fail due to missing types")
 
-	graph, err := NewGraph(Config{Package: "entc/gen", Storage: drivers}, T1, T2)
+	graph, err := NewGraph(&Config{Package: "entc/gen", Storage: drivers[0]}, T1, T2)
 	require.NoError(err)
 	require.NotNil(graph)
 	require.Len(graph.Nodes, 2)
@@ -111,6 +113,7 @@ func TestNewGraph(t *testing.T) {
 	}
 
 	t2 := graph.Nodes[1]
+	require.Equal(map[string]string{"Name": "T2"}, t2.Annotations["GQL"])
 	f1, e1 := t2.Fields[0], t2.Edges[0]
 	require.Equal("bool", f1.Type.String())
 	require.Equal("active", f1.Name)
@@ -118,10 +121,15 @@ func TestNewGraph(t *testing.T) {
 	require.True(e1.IsInverse())
 	require.Equal("t2", e1.Inverse)
 	require.Equal(graph.Nodes[0], e1.Type)
+
+	require.Equal("t2_m2m_from", t2.Edges[5].Name)
+	require.Equal("t2_m2m_to", t2.Edges[6].Name)
+	require.Equal(map[string]string{"Name": "From"}, t2.Edges[5].Annotations["GQL"])
+	require.Equal(map[string]string{"Name": "To"}, t2.Edges[6].Annotations["GQL"])
 }
 
 func TestNewGraphRequiredLoop(t *testing.T) {
-	_, err := NewGraph(Config{Package: "entc/gen", Storage: drivers}, &load.Schema{
+	_, err := NewGraph(&Config{Package: "entc/gen", Storage: drivers[0]}, &load.Schema{
 		Name: "T1",
 		Edges: []*load.Edge{
 			{Name: "parent", Type: "T1", Unique: true, Required: true},
@@ -130,7 +138,7 @@ func TestNewGraphRequiredLoop(t *testing.T) {
 	})
 	require.Error(t, err, "require loop")
 
-	_, err = NewGraph(Config{Package: "entc/gen", Storage: drivers},
+	_, err = NewGraph(&Config{Package: "entc/gen", Storage: drivers[0]},
 		&load.Schema{
 			Name: "User",
 			Edges: []*load.Edge{
@@ -147,7 +155,7 @@ func TestNewGraphRequiredLoop(t *testing.T) {
 }
 
 func TestNewGraphBadInverse(t *testing.T) {
-	_, err := NewGraph(Config{Package: "entc/gen", Storage: drivers},
+	_, err := NewGraph(&Config{Package: "entc/gen", Storage: drivers[0]},
 		&load.Schema{
 			Name: "User",
 			Edges: []*load.Edge{
@@ -170,12 +178,31 @@ func TestNewGraphBadInverse(t *testing.T) {
 	require.Errorf(t, err, "mismatch type for back-reference")
 }
 
+func TestNewGraphDuplicateEdges(t *testing.T) {
+	_, err := NewGraph(&Config{Package: "entc/gen", Storage: drivers[0]},
+		&load.Schema{
+			Name: "User",
+			Edges: []*load.Edge{
+				{Name: "groups", Type: "Group"},
+				{Name: "groups", Type: "Group", RefName: "owner", Inverse: true},
+			},
+		},
+		&load.Schema{
+			Name: "Group",
+			Edges: []*load.Edge{
+				{Name: "users", Type: "User", RefName: "groups", Inverse: true},
+				{Name: "owner", Type: "User", Unique: true},
+			},
+		})
+	require.EqualError(t, err, `entc/gen: User schema contains multiple "groups" edges`)
+}
+
 func TestRelation(t *testing.T) {
 	require := require.New(t)
-	_, err := NewGraph(Config{Package: "entc/gen", Storage: drivers}, T1)
+	_, err := NewGraph(&Config{Package: "entc/gen", Storage: drivers[0]}, T1)
 	require.Error(err, "should fail due to missing types")
 
-	graph, err := NewGraph(Config{Package: "entc/gen"}, T1, T2)
+	graph, err := NewGraph(&Config{Package: "entc/gen"}, T1, T2)
 	require.NoError(err)
 	require.NotNil(graph)
 	require.Len(graph.Nodes, 2)
@@ -203,18 +230,53 @@ func TestRelation(t *testing.T) {
 	require.Equal(M2M, t1.Edges[8].Rel.Type)
 }
 
+func TestFKColumns(t *testing.T) {
+	user := &load.Schema{
+		Name: "User",
+		Edges: []*load.Edge{
+			{Name: "pets", Type: "Pet"},
+			{Name: "pet", Type: "Pet", Unique: true},
+			{Name: "parent", Type: "User", Unique: true},
+		},
+	}
+	require := require.New(t)
+	graph, err := NewGraph(&Config{Package: "entc/gen", Storage: drivers[0]}, user, &load.Schema{Name: "Pet"})
+	require.NoError(err)
+	t1 := graph.Nodes[0]
+	require.Equal(Relation{Type: O2M, Table: "pets", Columns: []string{"user_pets"}}, t1.Edges[0].Rel)
+	require.Equal(Relation{Type: M2O, Table: "users", Columns: []string{"user_pet"}}, t1.Edges[1].Rel)
+	require.Equal(Relation{Type: O2O, Table: "users", Columns: []string{"user_parent"}}, t1.Edges[2].Rel)
+
+	// Adding inverse edges.
+	graph, err = NewGraph(&Config{Package: "entc/gen", Storage: drivers[0]}, user,
+		&load.Schema{
+			Name: "Pet",
+			Edges: []*load.Edge{
+				{Name: "owner", Type: "User", RefName: "pets", Inverse: true, Unique: true},
+				{Name: "team", Type: "User", RefName: "pet", Inverse: true},
+			},
+		},
+	)
+	require.NoError(err)
+	t1, t2 := graph.Nodes[0], graph.Nodes[1]
+	require.Equal(Relation{Type: O2M, Table: "pets", Columns: []string{"user_pets"}}, t1.Edges[0].Rel)
+	require.Equal(Relation{Type: M2O, Table: "users", Columns: []string{"user_pet"}}, t1.Edges[1].Rel)
+	require.Equal(Relation{Type: M2O, Table: "pets", Columns: []string{"user_pets"}}, t2.Edges[0].Rel)
+	require.Equal(Relation{Type: O2M, Table: "users", Columns: []string{"user_pet"}}, t2.Edges[1].Rel)
+}
+
 func TestGraph_Gen(t *testing.T) {
 	require := require.New(t)
 	target := filepath.Join(os.TempDir(), "ent")
 	require.NoError(os.MkdirAll(target, os.ModePerm), "creating tmpdir")
-	defer os.Remove(target)
-	external := template.Must(template.New("external").Parse("package external"))
-	graph, err := NewGraph(Config{
-		Package:  "entc/gen",
-		Target:   target,
-		Storage:  drivers,
-		Template: external,
-		IDType:   &field.TypeInfo{Type: field.TypeInt},
+	defer os.RemoveAll(target)
+	external := MustParse(NewTemplate("external").Parse("package external"))
+	graph, err := NewGraph(&Config{
+		Package:   "entc/gen",
+		Target:    target,
+		Storage:   drivers[0],
+		Templates: []*Template{external},
+		IDType:    &field.TypeInfo{Type: field.TypeInt},
 	}, &load.Schema{
 		Name: "T1",
 		Fields: []*load.Field{
@@ -230,7 +292,7 @@ func TestGraph_Gen(t *testing.T) {
 	require.NotNil(graph)
 	require.NoError(graph.Gen())
 	// ensure graph files were generated.
-	for _, name := range []string{"ent", "client", "config", "example_test"} {
+	for _, name := range []string{"ent", "client", "config"} {
 		_, err := os.Stat(fmt.Sprintf("%s/%s.go", target, name))
 		require.NoError(err)
 	}
@@ -241,4 +303,44 @@ func TestGraph_Gen(t *testing.T) {
 	}
 	_, err = os.Stat(target + "/external.go")
 	require.NoError(err)
+}
+
+func ensureStructTag(name string) Hook {
+	return func(next Generator) Generator {
+		return GenerateFunc(func(g *Graph) error {
+			// Ensure all fields have a specific tag.
+			for _, node := range g.Nodes {
+				for _, f := range node.Fields {
+					tag := reflect.StructTag(f.StructTag)
+					if _, ok := tag.Lookup(name); !ok {
+						return fmt.Errorf("struct tag %q is missing for field %s.%s", name, node.Name, f.Name)
+					}
+				}
+			}
+			return next.Generate(g)
+		})
+	}
+}
+
+func TestGraph_Hooks(t *testing.T) {
+	require := require.New(t)
+	graph, err := NewGraph(&Config{
+		Package: "entc/gen",
+		Storage: drivers[0],
+		IDType:  &field.TypeInfo{Type: field.TypeInt},
+		Hooks:   []Hook{ensureStructTag("yaml")},
+	}, &load.Schema{
+		Name: "T1",
+		Fields: []*load.Field{
+			{Name: "age", Info: &field.TypeInfo{Type: field.TypeInt}, Optional: true},
+			{Name: "expired_at", Info: &field.TypeInfo{Type: field.TypeTime}, Nillable: true, Optional: true},
+			{Name: "name", Info: &field.TypeInfo{Type: field.TypeString}},
+		},
+		Edges: []*load.Edge{
+			{Name: "t1", Type: "T1", Unique: true},
+		},
+	})
+	require.NoError(err)
+	require.NotNil(graph)
+	require.EqualError(graph.Gen(), `struct tag "yaml" is missing for field T1.age`)
 }

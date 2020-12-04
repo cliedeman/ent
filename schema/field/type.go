@@ -4,18 +4,26 @@
 
 package field
 
-import "strings"
+import (
+	"fmt"
+	"reflect"
+	"strings"
+)
 
+// A Type represents a field type.
 type Type uint8
 
+// List of field types.
 const (
 	TypeInvalid Type = iota
 	TypeBool
 	TypeTime
 	TypeJSON
+	TypeUUID
 	TypeBytes
 	TypeEnum
 	TypeString
+	TypeOther
 	TypeInt8
 	TypeInt16
 	TypeInt32
@@ -44,6 +52,16 @@ func (t Type) Numeric() bool {
 	return t >= TypeInt8 && t < endTypes
 }
 
+// Float reports if the given type is a float type.
+func (t Type) Float() bool {
+	return t == TypeFloat32 || t == TypeFloat64
+}
+
+// Integer reports if the given type is an integral type.
+func (t Type) Integer() bool {
+	return t.Numeric() && !t.Float()
+}
+
 // Valid reports if the given type if known type.
 func (t Type) Valid() bool {
 	return t > TypeInvalid && t < endTypes
@@ -62,11 +80,14 @@ func (t Type) ConstName() string {
 	}
 }
 
+// TypeInfo holds the information regarding field type.
+// Used by complex types like JSON and  Bytes.
 type TypeInfo struct {
 	Type     Type
 	Ident    string
 	PkgPath  string
 	Nillable bool // slices or pointers.
+	RType    *RType
 }
 
 // String returns the string representation of a type.
@@ -91,12 +112,40 @@ func (t TypeInfo) Numeric() bool {
 	return t.Type.Numeric()
 }
 
+// ConstName returns the const name of the info type.
+func (t TypeInfo) ConstName() string {
+	return t.Type.ConstName()
+}
+
+// ValueScanner indicates if this type implements the ValueScanner interface.
+func (t TypeInfo) ValueScanner() bool {
+	return t.RType.implements(valueScannerType)
+}
+
+// Comparable reports whether values of this type are comparable.
+func (t TypeInfo) Comparable() bool {
+	switch t.Type {
+	case TypeBool, TypeTime, TypeUUID, TypeEnum, TypeString:
+		return true
+	default:
+		return t.Numeric()
+	}
+}
+
+var stringerType = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
+
+// Stringer indicates if this type implements the Stringer interface.
+func (t TypeInfo) Stringer() bool {
+	return t.RType.implements(stringerType)
+}
+
 var (
 	typeNames = [...]string{
 		TypeInvalid: "invalid",
 		TypeBool:    "bool",
 		TypeTime:    "time.Time",
 		TypeJSON:    "json.RawMessage",
+		TypeUUID:    "[16]byte",
 		TypeBytes:   "[]byte",
 		TypeEnum:    "string",
 		TypeString:  "string",
@@ -115,8 +164,51 @@ var (
 	}
 	constNames = [...]string{
 		TypeJSON:  "TypeJSON",
+		TypeUUID:  "TypeUUID",
 		TypeTime:  "TypeTime",
 		TypeEnum:  "TypeEnum",
 		TypeBytes: "TypeBytes",
 	}
 )
+
+// RType holds a serializable reflect.Type information of
+// Go object. Used by the entc package.
+type RType struct {
+	Name    string
+	Kind    reflect.Kind
+	PkgPath string
+	Methods map[string]struct{ In, Out []*RType }
+}
+
+// TypeEqual tests if the RType is equal to given reflect.Type.
+func (r *RType) TypeEqual(t reflect.Type) bool {
+	t = indirect(t)
+	return r.Name == t.Name() && r.Kind == t.Kind() && r.PkgPath == t.PkgPath()
+}
+
+func (r *RType) implements(typ reflect.Type) bool {
+	if r == nil {
+		return false
+	}
+	n := typ.NumMethod()
+	for i := 0; i < n; i++ {
+		m0 := typ.Method(i)
+		m1, ok := r.Methods[m0.Name]
+		if !ok || len(m1.In) != m0.Type.NumIn() || len(m1.Out) != m0.Type.NumOut() {
+			return false
+		}
+		in := m0.Type.NumIn()
+		for j := 0; j < in; j++ {
+			if !m1.In[j].TypeEqual(m0.Type.In(j)) {
+				return false
+			}
+		}
+		out := m0.Type.NumOut()
+		for j := 0; j < out; j++ {
+			if !m1.Out[j].TypeEqual(m0.Type.Out(j)) {
+				return false
+			}
+		}
+	}
+	return true
+}

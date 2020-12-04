@@ -5,19 +5,19 @@ title: Introduction
 
 ## Installation
 
-`ent` comes with a codegen tool called `entc`. In order to install
-`entc` run the following command:
+The project comes with a codegen tool called `ent`. In order to install
+`ent` run the following command:
 
 ```bash
-go get github.com/facebookincubator/ent/entc/cmd/entc
+go get github.com/facebook/ent/cmd/ent
 ``` 
 
 ## Initialize A New Schema
 
-In order to generate one or more schema templates, run `entc init` as follows:
+In order to generate one or more schema templates, run `ent init` as follows:
 
 ```bash
-entc init User Pet
+go run github.com/facebook/ent/cmd/ent init User Pet
 ```
 
 `init` will create the 2 schemas (`user.go` and `pet.go`) under the `ent/schema` directory.
@@ -27,17 +27,13 @@ is to have an `ent` directory under the root directory of the project.
 ## Generate Assets
 
 After adding a few [fields](schema-fields.md) and [edges](schema-edges.md), you want to generate
-the assets for working with your entities. Run the following command:
+the assets for working with your entities. Run `ent generate` from the root directory of the project,
+or use `go generate`:
+
 
 ```bash
-entc generate ./ent/schema
+go generate ./ent
 ```
-
-You should note that `goimports` is required for the codegen, and it can be installed using:
-
-```bash
-go get -u golang.org/x/tools/cmd/goimports
-``` 
 
 The `generate` command generates the following assets for the schemas:
 
@@ -47,48 +43,112 @@ The `generate` command generates the following assets for the schemas:
 - Package containing constants and predicates used for interacting with the builders.
 - A `migrate` package for SQL dialects. See [Migration](migrate.md) for more info.
 
+## Version Compatibility Between `entc` And `ent`
+
+When working with `ent` CLI in a project, you want to make sure the version being
+used by the CLI is **identical** to the `ent` version used by your project.
+
+One of the options for achieving this is asking `go generate` to use the version
+mentioned in the `go.mod` file when running `ent`. If your project does not use
+[Go modules](https://github.com/golang/go/wiki/Modules#quick-start), setup one as follows:
+
+```console
+go mod init <project>
+```
+
+And then, re-run the following command in order to add `ent` to your `go.mod` file:
+
+```console
+go get github.com/facebook/ent/cmd/ent
+```
+
+Add a `generate.go` file to your project under `<project>/ent`:
+
+```go
+package ent
+
+//go:generate go run github.com/facebook/ent/cmd/ent generate ./schema
+```
+
+Finally, you can run `go generate ./ent` from the root directory of your project
+in order to run `ent` code generation on your project schemas.
+
 ## Code Generation Options
 
-For more info about codegen options, run `entc generate -h`:
+For more info about codegen options, run `ent generate -h`:
 
 ```console
 generate go code for the schema directory
 
 Usage:
-  entc generate [flags] path
+  ent generate [flags] path
 
 Examples:
-  entc generate ./ent/schema
-  entc generate github.com/a8m/x
+  ent generate ./ent/schema
+  ent generate github.com/a8m/x
 
 Flags:
+      --feature strings       extend codegen with additional features
       --header string         override codegen header
   -h, --help                  help for generate
       --idtype [int string]   type of the id field (default int)
-      --storage strings       list of storage drivers to support (default [sql])
+      --storage string        storage driver to support in codegen (default "sql")
       --target string         target directory for codegen
       --template strings      external templates to execute
 ```
 
 ## Storage Options
 
-`entc` can generate assets for both SQL and Gremlin dialect. The default dialect is SQL.
+`ent` can generate assets for both SQL and Gremlin dialect. The default dialect is SQL.
 
 ## External Templates
 
-`entc` accepts external Go templates to execute. If the template name is already defined by
-`entc`, it will override the existing one. Otherwise, it will write the execution output to
-a file with the same name as the template.
+`ent` accepts external Go templates to execute. If the template name already defined by
+`ent`, it will override the existing one. Otherwise, it will write the execution output to
+a file with the same name as the template. The flag format supports  `file`, `dir` and `glob`
+as follows:
 
-Example of a custom template provides a `Node` API for GraphQL - 
-[Github](https://github.com/facebookincubator/ent/blob/master/entc/integration/template/ent/template/node.tmpl).
+```console
+go run github.com/facebook/ent/cmd/ent generate --template <dir-path> --template glob="path/to/*.tmpl" ./ent/schema
+```
+
+More information and examples can be found in the [external templates doc](templates.md).
+
+## Use `entc` As A Package
+
+Another option for running `ent` CLI is to use it as a package as follows:
+
+```go
+package main
+
+import (
+	"log"
+
+	"github.com/facebook/ent/entc"
+	"github.com/facebook/ent/entc/gen"
+	"github.com/facebook/ent/schema/field"
+)
+
+func main() {
+	err := entc.Generate("./schema", &gen.Config{
+		Header: "// Your Custom Header",
+		IDType: &field.TypeInfo{Type: field.TypeInt},
+	})
+	if err != nil {
+		log.Fatal("running ent codegen:", err)
+	}
+}
+```
+
+The full example exists in [GitHub](https://github.com/facebook/ent/tree/master/examples/entcpkg).
+
 
 ## Schema Description
 
 In order to get a description of your graph schema, run:
 
 ```bash
-entc describe ./ent/schema
+go run github.com/facebook/ent/cmd/ent describe ./ent/schema
 ```
 
 An example for the output is as follows:
@@ -120,4 +180,53 @@ User:
 	+------+------+---------+---------+----------+--------+----------+
 	| pets | Pet  | false   |         | O2M      | false  | true     |
 	+------+------+---------+---------+----------+--------+----------+
+```
+
+## Code Generation Hooks
+
+The `entc` package provides an option to add a list of hooks (middlewares) to the code-generation phase.
+This option is ideal for adding custom validators for the schema, or for generating additional assets
+using the graph schema.
+
+```go
+// +build ignore
+
+package main
+
+import (
+	"fmt"
+	"log"
+	"reflect"
+
+	"github.com/facebook/ent/entc"
+	"github.com/facebook/ent/entc/gen"
+)
+
+func main() {
+	err := entc.Generate("./schema", &gen.Config{
+		Hooks: []gen.Hook{
+			EnsureStructTag("json"),
+		},
+	})
+	if err != nil {
+		log.Fatalf("running ent codegen: %v", err)
+	}
+}
+
+// EnsureStructTag ensures all fields in the graph have a specific tag name.
+func EnsureStructTag(name string) gen.Hook {
+	return func(next gen.Generator) gen.Generator {
+		return gen.GenerateFunc(func(g *gen.Graph) error {
+			for _, node := range g.Nodes {
+				for _, field := range node.Fields {
+					tag := reflect.StructTag(field.StructTag)
+					if _, ok := tag.Lookup(name); !ok {
+						return fmt.Errorf("struct tag %q is missing for field %s.%s", name, node.Name, f.Name)
+					}
+				}
+			}
+			return next.Generate(g)
+		})
+	}
+}
 ```

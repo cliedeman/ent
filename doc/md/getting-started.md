@@ -4,11 +4,14 @@ title: Quick Introduction
 sidebar_label: Quick Introduction
 ---
 
-`ent` is a simple, yet powerful entity framework for Go built on SQL/Gremlin with the following principles:
-- Easily modeling your data as a graph structure.
-- Defining your schema as code.
+**ent** is a simple, yet powerful entity framework for Go, that makes it easy to build
+and maintain applications with large data-models and sticks with the following principles:
+
+- Easily model database schema as a graph structure.
+- Define schema as a programmatic Go code.
 - Static typing based on code generation.
-- Simplifying graph traversals.
+- Database queries and graph traversals are easy to write.
+- Simple to extend and customize using Go templates.
 
 <br/>
 
@@ -17,17 +20,27 @@ sidebar_label: Quick Introduction
 ## Installation
 
 ```console
-go get github.com/facebookincubator/ent/entc/cmd/entc
+go get github.com/facebook/ent/cmd/ent
 ```
 
-After installing `entc` (the code generator for `ent`), you should have it in your `PATH`.
+After installing `ent` codegen tool, you should have it in your `PATH`.
+If you don't find it your path, you can also run: `go run github.com/facebook/ent/cmd/ent <command>`
+
+## Setup A Go Environment
+
+If your project directory is outside [GOPATH](https://github.com/golang/go/wiki/GOPATH) or you are not familiar with
+GOPATH, setup a [Go module](https://github.com/golang/go/wiki/Modules#quick-start) project as follows:
+
+```console
+go mod init <project>
+```
 
 ## Create Your First Schema
 
 Go to the root directory of your project, and run:
 
 ```console
-entc init User
+ent init User
 ```
 The command above will generate the schema for `User` under `<project>/ent/schema/` directory:
 
@@ -36,7 +49,7 @@ The command above will generate the schema for `User` under `<project>/ent/schem
 
 package schema
 
-import "github.com/facebookincubator/ent"
+import "github.com/facebook/ent"
 
 // User holds the schema definition for the User entity.
 type User struct {
@@ -61,8 +74,8 @@ Add 2 fields to the `User` schema:
 package schema
 
 import (
-	"github.com/facebookincubator/ent"
-	"github.com/facebookincubator/ent/schema/field"
+	"github.com/facebook/ent"
+	"github.com/facebook/ent/schema/field"
 )
 
 
@@ -77,10 +90,10 @@ func (User) Fields() []ent.Field {
 }
 ```
 
-Run `entc generate` from the root directory of the project:
+Run `go generate` from the root directory of the project as follows:
 
 ```go
-entc generate ./ent/schema
+go generate ./ent
 ```
 
 This produces the following files:
@@ -90,7 +103,6 @@ ent
 ├── config.go
 ├── context.go
 ├── ent.go
-├── example_test.go
 ├── migrate
 │   ├── migrate.go
 │   └── schema.go
@@ -118,6 +130,7 @@ To get started, create a new `ent.Client`. For this example, we will use SQLite3
 package main
 
 import (
+	"context"
 	"log"
 
 	"<project>/ent"
@@ -131,7 +144,7 @@ func main() {
 		log.Fatalf("failed opening connection to sqlite: %v", err)
 	}
 	defer client.Close()
-	// run the auto migration tool.
+	// Run the auto migration tool.
 	if err := client.Schema.Create(context.Background()); err != nil {
 		log.Fatalf("failed creating schema resources: %v", err)
 	}
@@ -156,7 +169,7 @@ func CreateUser(ctx context.Context, client *ent.Client) (*ent.User, error) {
 
 ## Query Your Entities
 
-`entc` generates a package for each entity schema that contains its predicates, default values, validators
+`ent` generates a package for each entity schema that contains its predicates, default values, validators
 and additional information about storage elements (column names, primary keys, etc).
 
 ```go
@@ -188,11 +201,11 @@ func QueryUser(ctx context.Context, client *ent.Client) (*ent.User, error) {
 
 ## Add Your First Edge (Relation)
 In this part of the tutorial, we want to declare an edge (relation) to another entity in the schema.  
-Let's create 2 additional entities named `Car` and `Group` with a few fields. We use `entc`
+Let's create 2 additional entities named `Car` and `Group` with a few fields. We use `ent` CLI
 to generate the initial schemas:
 
 ```console
-entc init Car Group
+go run github.com/facebook/ent/cmd/ent init Car Group
 ```
 
 And then we add the rest of the fields manually:
@@ -200,8 +213,8 @@ And then we add the rest of the fields manually:
 import (
 	"regexp"
 
-	"github.com/facebookincubator/ent"
-	"github.com/facebookincubator/ent/schema/field"
+	"github.com/facebook/ent"
+	"github.com/facebook/ent/schema/field"
 )
 
 // Fields of the Car.
@@ -217,7 +230,7 @@ func (Car) Fields() []ent.Field {
 func (Group) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("name").
-			// regexp validation for group name.
+			// Regexp validation for group name.
 			Match(regexp.MustCompile("[a-zA-Z_]+$")),
 	}
 }
@@ -228,14 +241,14 @@ can **have 1 or more** cars, but a car **has only one** owner (one-to-many relat
 
 ![er-user-cars](https://entgo.io/assets/re_user_cars.png)
 
-Let's add the `"cars"` edge to the `User` schema, and run `entc generate ./ent/schema`:
+Let's add the `"cars"` edge to the `User` schema, and run `go generate ./ent`:
 
  ```go
  import (
  	"log"
 
- 	"github.com/facebookincubator/ent"
- 	"github.com/facebookincubator/ent/schema/edge"
+ 	"github.com/facebook/ent"
+ 	"github.com/facebook/ent/schema/edge"
  )
 
  // Edges of the User.
@@ -249,7 +262,7 @@ Let's add the `"cars"` edge to the `User` schema, and run `entc generate ./ent/s
 We continue our example by creating 2 cars and adding them to a user.
 ```go
 func CreateCars(ctx context.Context, client *ent.Client) (*ent.User, error) {
-	// creating new car with model "Tesla".
+	// Create a new car with model "Tesla".
 	tesla, err := client.Car.
 		Create().
 		SetModel("Tesla").
@@ -259,7 +272,7 @@ func CreateCars(ctx context.Context, client *ent.Client) (*ent.User, error) {
 		return nil, fmt.Errorf("failed creating car: %v", err)
 	}
 
-	// creating new car with model "Ford".
+	// Create a new car with model "Ford".
 	ford, err := client.Car.
 		Create().
 		SetModel("Ford").
@@ -270,7 +283,7 @@ func CreateCars(ctx context.Context, client *ent.Client) (*ent.User, error) {
 	}
 	log.Println("car was created: ", ford)
 
-	// create a new user, and add it the 2 cars.
+	// Create a new user, and add it the 2 cars.
 	a8m, err := client.User.
 		Create().
 		SetAge(30).
@@ -300,7 +313,7 @@ func QueryCars(ctx context.Context, a8m *ent.User) error {
 	}
 	log.Println("returned cars:", cars)
 
-	// what about filtering specific cars.
+	// What about filtering specific cars.
 	ford, err := a8m.QueryCars().
 		Where(car.ModelEQ("Ford")).
 		Only(ctx)
@@ -323,20 +336,20 @@ The new edge created in the diagram above is translucent, to emphasize that we d
 edge in the database. It's just a back-reference to the real edge (relation).
 
 Let's add an inverse edge named `owner` to the `Car` schema, reference it to the `cars` edge
-in the `User` schema, and run `entc generate ./ent/schema`.
+in the `User` schema, and run `go generate ./ent`.
 
 ```go
 import (
 	"log"
 
-	"github.com/facebookincubator/ent"
-	"github.com/facebookincubator/ent/schema/edge"
+	"github.com/facebook/ent"
+	"github.com/facebook/ent/schema/edge"
 )
 
 // Edges of the Car.
 func (Car) Edges() []ent.Edge {
 	return []ent.Edge{
-		// create an inverse-edge called "owner" of type `User`
+		// Create an inverse-edge called "owner" of type `User`
 	 	// and reference it to the "cars" edge (in User schema)
 	 	// explicitly using the `Ref` method.
 	 	edge.From("owner", User.Type).
@@ -361,7 +374,7 @@ func QueryCarUsers(ctx context.Context, a8m *ent.User) error {
 	if err != nil {
 		return fmt.Errorf("failed querying user cars: %v", err)
 	}
-	// query the inverse edge.
+	// Query the inverse edge.
 	for _, ca := range cars {
 		owner, err := ca.QueryOwner().Only(ctx)
 		if err != nil {
@@ -390,8 +403,8 @@ relationship named `groups`. Let's define this relationship in our schemas:
 	 import (
 		"log"
 	
-		"github.com/facebookincubator/ent"
-		"github.com/facebookincubator/ent/schema/edge"
+		"github.com/facebook/ent"
+		"github.com/facebook/ent/schema/edge"
 	 )
 	
 	 // Edges of the Group.
@@ -407,15 +420,15 @@ relationship named `groups`. Let's define this relationship in our schemas:
 	 import (
 	 	"log"
 	
-	 	"github.com/facebookincubator/ent"
-	 	"github.com/facebookincubator/ent/schema/edge"
+	 	"github.com/facebook/ent"
+	 	"github.com/facebook/ent/schema/edge"
 	 )
 	
 	 // Edges of the User.
 	 func (User) Edges() []ent.Edge {
 	 	return []ent.Edge{
 			edge.To("cars", Car.Type),
-		 	// create an inverse-edge called "groups" of type `Group`
+		 	// Create an inverse-edge called "groups" of type `Group`
 		 	// and reference it to the "users" edge (in Group schema)
 		 	// explicitly using the `Ref` method.
 			edge.From("groups", Group.Type).
@@ -424,9 +437,9 @@ relationship named `groups`. Let's define this relationship in our schemas:
 	 }
 	```
 
-We run `entc` on the schema directory to re-generate the assets.
-```cosole
-entc generate ./ent/schema
+We run `ent` on the schema directory to re-generate the assets.
+```console
+go generate ./ent
 ```
 
 ## Run Your First Graph Traversal
@@ -440,7 +453,7 @@ entities and relations). Let's create the following graph using the framework:
 ```go
 
 func CreateGraph(ctx context.Context, client *ent.Client) error {
-	// first, create the users.
+	// First, create the users.
 	a8m, err := client.User.
 		Create().
 		SetAge(30).
@@ -457,7 +470,7 @@ func CreateGraph(ctx context.Context, client *ent.Client) error {
 	if err != nil {
 		return err
 	}
-	// then, create the cars, and attach them to the users in the creation.
+	// Then, create the cars, and attach them to the users in the creation.
 	_, err = client.Car.
 		Create().
 		SetModel("Tesla").
@@ -485,7 +498,7 @@ func CreateGraph(ctx context.Context, client *ent.Client) error {
 	if err != nil {
 		return err
 	}
-	// create the groups, and add their users in the creation.
+	// Create the groups, and add their users in the creation.
 	_, err = client.Group.
 		Create().
 		SetName("GitLab").
@@ -597,4 +610,4 @@ Now when we have a graph with data, we can run a few queries on it:
     }
     ```
 
-The full example exists in [GitHub](https://github.com/facebookincubator/ent/tree/master/examples/start).
+The full example exists in [GitHub](https://github.com/facebook/ent/tree/master/examples/start).

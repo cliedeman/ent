@@ -8,16 +8,19 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/facebookincubator/ent/dialect/gremlin/graph/dsl"
-	"github.com/facebookincubator/ent/dialect/sql"
+	"github.com/facebook/ent/dialect/gremlin/graph/dsl"
+	"github.com/facebook/ent/dialect/sql"
 )
 
-// A SchemaOption defines what type of schema feature a storage driver support.
+// A SchemaMode defines what type of schema feature a storage driver support.
 type SchemaMode uint
 
 const (
 	// Unique defines field and edge uniqueness support.
 	Unique SchemaMode = 1 << iota
+
+	// Indexes defines indexes support.
+	Indexes
 
 	// Cascade defines cascading operations (e.g. cascade deletion).
 	Cascade
@@ -47,16 +50,18 @@ var drivers = []*Storage{
 		Name:      "sql",
 		IdentName: "SQL",
 		Builder:   reflect.TypeOf(&sql.Selector{}),
-		Dialects:  []string{"dialect.SQLite", "dialect.MySQL"},
+		Dialects:  []string{"dialect.SQLite", "dialect.MySQL", "dialect.Postgres"},
 		Imports: []string{
-			"github.com/facebookincubator/ent/dialect/sql",
+			"github.com/facebook/ent/dialect/sql",
+			"github.com/facebook/ent/dialect/sql/sqlgraph",
+			"github.com/facebook/ent/schema/field",
 		},
-		SchemaMode: Unique | Cascade | Migrate,
+		SchemaMode: Unique | Indexes | Cascade | Migrate,
 		Ops: func(f *Field) []Op {
-			if !f.IsString() {
-				return nil
+			if f.IsString() && f.ConvertedToBasic() {
+				return []Op{EqualFold, ContainsFold}
 			}
-			return []Op{EqualFold, ContainsFold}
+			return nil
 		},
 		OpCode: opCodes(sqlCode[:]),
 	},
@@ -66,12 +71,12 @@ var drivers = []*Storage{
 		Builder:   reflect.TypeOf(&dsl.Traversal{}),
 		Dialects:  []string{"dialect.Gremlin"},
 		Imports: []string{
-			"github.com/facebookincubator/ent/dialect/gremlin",
-			"github.com/facebookincubator/ent/dialect/gremlin/graph/dsl",
-			"github.com/facebookincubator/ent/dialect/gremlin/graph/dsl/__",
-			"github.com/facebookincubator/ent/dialect/gremlin/graph/dsl/g",
-			"github.com/facebookincubator/ent/dialect/gremlin/graph/dsl/p",
-			"github.com/facebookincubator/ent/dialect/gremlin/encoding/graphson",
+			"github.com/facebook/ent/dialect/gremlin",
+			"github.com/facebook/ent/dialect/gremlin/graph/dsl",
+			"github.com/facebook/ent/dialect/gremlin/graph/dsl/__",
+			"github.com/facebook/ent/dialect/gremlin/graph/dsl/g",
+			"github.com/facebook/ent/dialect/gremlin/graph/dsl/p",
+			"github.com/facebook/ent/dialect/gremlin/encoding/graphson",
 		},
 		SchemaMode: Unique,
 		OpCode:     opCodes(gremlinCode[:]),

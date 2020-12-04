@@ -8,21 +8,31 @@
       "schema-fields",
       "schema-edges",
       "schema-indexes",
-      "schema-config",
-      "schema-mixin"
+      "schema-mixin",
+      "schema-annotations"
     ],
     "Code Generation": [
       "code-gen",
       "crud",
       "traversals",
-      "aggregate",
+      "eager-load",
+      "hooks",
+      "privacy",
+      "transactions",
       "predicates",
-      "paging",
-      "transactions"
+      "aggregate",
+      "paging"
     ],
     "Migration": [
       "migrate",
       "dialects"
+    ],
+    "Misc": [
+      "templates",
+      "graphql",
+      "sql-integration",
+      "testing",
+      "faq"
     ]
   }
 }

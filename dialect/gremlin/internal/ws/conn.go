@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/facebookincubator/ent/dialect/gremlin"
-	"github.com/facebookincubator/ent/dialect/gremlin/encoding"
-	"github.com/facebookincubator/ent/dialect/gremlin/encoding/graphson"
+	"github.com/facebook/ent/dialect/gremlin"
+	"github.com/facebook/ent/dialect/gremlin/encoding"
+	"github.com/facebook/ent/dialect/gremlin/encoding/graphson"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -104,10 +104,11 @@ func (d *Dialer) Dial(uri string) (*Conn, error) {
 
 // DialContext creates a new Gremlin connection.
 func (d *Dialer) DialContext(ctx context.Context, uri string) (*Conn, error) {
-	c, _, err := d.Dialer.DialContext(ctx, uri, nil)
+	c, rsp, err := d.Dialer.DialContext(ctx, uri, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "gremlin: dialing uri %s", uri)
 	}
+	defer rsp.Body.Close()
 
 	conn := &Conn{
 		conn: c,
@@ -168,7 +169,7 @@ func (c *Conn) Execute(ctx context.Context, req *gremlin.Request) (*gremlin.Resp
 // Close connection with a Gremlin server.
 func (c *Conn) Close() error {
 	c.grp.Go(func() error { return ErrConnClosed })
-	c.grp.Wait()
+	_ = c.grp.Wait()
 	return nil
 }
 
