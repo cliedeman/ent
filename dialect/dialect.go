@@ -15,10 +15,11 @@ import (
 
 // Dialect names for external usage.
 const (
-	MySQL    = "mysql"
-	SQLite   = "sqlite3"
-	Postgres = "postgres"
-	Gremlin  = "gremlin"
+	MySQL     = "mysql"
+	SQLite    = "sqlite3"
+	Postgres  = "postgres"
+	Gremlin   = "gremlin"
+	Cockroach = "cockroach"
 )
 
 // ExecQuerier wraps the 2 database operations.

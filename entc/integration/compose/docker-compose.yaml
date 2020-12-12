@@ -46,6 +46,16 @@ services:
     ports:
       - 4306:3306
 
+  postgres9:
+    image: postgres:9
+    environment:
+      POSTGRES_DB: test
+      POSTGRES_PASSWORD: pass
+    healthcheck:
+      test: pg_isready -U postgres
+    ports:
+      - 5429:5432
+
   postgres10:
     image: postgres:10
     environment:
@@ -85,6 +95,21 @@ services:
       test: pg_isready -U postgres
     ports:
       - 5434:5432
+
+  cockroachdb:
+    image: cockroachdb/cockroach:v20.1.9
+    command: start --insecure
+    # TODO: healthcheck - https://www.cockroachlabs.com/docs/stable/monitoring-and-alerting.html#health-ready-1
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+
+#  cockroachdb-init:
+#    image: cockroachdb/cockroach:v20.1.9
+#    volumes:
+#      - ./cockroachdb-init.sh:/cockroachdb-init.sh
+#    entrypoint: "/bin/bash"
+#    command: /cockroachdb-init.sh
 
   gremlin:
     image: entgo/gremlin-server

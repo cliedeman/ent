@@ -649,7 +649,7 @@ func (i *InsertBuilder) Default() *InsertBuilder {
 	switch i.Dialect() {
 	case dialect.MySQL:
 		i.defaults = "VALUES ()"
-	case dialect.SQLite, dialect.Postgres:
+	case dialect.SQLite, dialect.Postgres, dialect.Cockroach:
 		i.defaults = "DEFAULT VALUES"
 	}
 	return i
@@ -1155,7 +1155,7 @@ func (p *Predicate) ContainsFold(col, sub string) *Predicate {
 			// We assume the CHARACTER SET is configured to utf8mb4,
 			// because this how it is defined in dialect/sql/schema.
 			b.Ident(col).WriteString(" COLLATE utf8mb4_general_ci LIKE ")
-		case dialect.Postgres:
+		case dialect.Postgres, dialect.Cockroach:
 			b.Ident(col).WriteString(" ILIKE ")
 		default: // SQLite.
 			f.Lower(col)
@@ -2198,6 +2198,11 @@ func (b Builder) clone() Builder {
 // postgres reports if the builder dialect is PostgreSQL.
 func (b Builder) postgres() bool {
 	return b.Dialect() == dialect.Postgres
+}
+
+// cockroach reports if the builder dialect is PostgreSQL.
+func (b Builder) cockroach() bool {
+	return b.Dialect() == dialect.Cockroach
 }
 
 // fromIdent sets the builder dialect from the identifier format.

@@ -39,10 +39,14 @@ func (d Driver) DB() *sql.DB {
 	return d.ExecQuerier.(*sql.DB)
 }
 
+func (d *Driver) SetCockroachDbDialect() {
+	d.dialect = dialect.Cockroach
+}
+
 // Dialect implements the dialect.Dialect method.
 func (d Driver) Dialect() string {
 	// If the underlying driver is wrapped with opencensus driver.
-	for _, name := range []string{dialect.MySQL, dialect.SQLite, dialect.Postgres} {
+	for _, name := range []string{dialect.MySQL, dialect.SQLite, dialect.Postgres, dialect.Cockroach} {
 		if strings.HasPrefix(d.dialect, name) {
 			return name
 		}

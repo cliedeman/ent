@@ -5,9 +5,21 @@ in the LICENSE file in the root directory of this source tree.
 */}}
 
 {{ define "dialect/sql/client/open" }}
+    isCockroach := false
+
+    if driverName == dialect.Cockroach {
+        isCockroach = true
+        driverName = dialect.Postgres
+    }
+
 	drv, err := sql.Open(driverName, dataSourceName)
 	if err != nil {
 		return nil, err
 	}
+
+	if isCockroach {
+        drv.SetCockroachDbDialect()
+    }
+
 	return NewClient(append(options, Driver(drv))...), nil
 {{ end }}

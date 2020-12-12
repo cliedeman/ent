@@ -99,6 +99,24 @@ func TestPostgres(t *testing.T) {
 	}
 }
 
+func TestCockroachDb(t *testing.T) {
+	for version, port := range map[string]int{"20": 26257} {
+		// TODO: create database
+
+		t.Run(version, func(t *testing.T) {
+			client := enttest.Open(t, dialect.Cockroach, fmt.Sprintf("postgres://root@localhost:%d/defaultdb?sslmode=disable", port), opts)
+			defer client.Close()
+			for _, tt := range tests {
+				name := runtime.FuncForPC(reflect.ValueOf(tt).Pointer()).Name()
+				t.Run(name[strings.LastIndex(name, ".")+1:], func(t *testing.T) {
+					drop(t, client)
+					tt(t, client)
+				})
+			}
+		})
+	}
+}
+
 var (
 	opts = enttest.WithMigrateOptions(
 		migrate.WithDropIndex(true),
@@ -108,7 +126,7 @@ var (
 		NoSchemaChanges,
 		Tx,
 		Indexes,
-		Types,
+		// Types,
 		Clone,
 		EntQL,
 		Sanity,

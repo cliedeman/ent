@@ -102,10 +102,22 @@ func (c *Client) init() {
 func Open(driverName, dataSourceName string, options ...Option) (*Client, error) {
 	switch driverName {
 	case dialect.MySQL, dialect.Postgres, dialect.SQLite:
+		isCockroach := false
+
+		if driverName == dialect.Cockroach {
+			isCockroach = true
+			driverName = dialect.Postgres
+		}
+
 		drv, err := sql.Open(driverName, dataSourceName)
 		if err != nil {
 			return nil, err
 		}
+
+		if isCockroach {
+			drv.SetCockroachDbDialect()
+		}
+
 		return NewClient(append(options, Driver(drv))...), nil
 	default:
 		return nil, fmt.Errorf("unsupported driver: %q", driverName)
@@ -404,7 +416,7 @@ func (c *CommentClient) Query() *CommentQuery {
 
 // Get returns a Comment entity by its id.
 func (c *CommentClient) Get(ctx context.Context, id int) (*Comment, error) {
-	return c.Query().Where(comment.ID(id)).Only(ctx)
+	return c.Query().Where(comment.ID(id)).All(ctx)
 }
 
 // GetX is like Get, but panics if an error occurs.

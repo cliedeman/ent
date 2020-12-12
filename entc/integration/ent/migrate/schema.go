@@ -98,7 +98,7 @@ var (
 		{Name: "schema_float32", Type: field.TypeFloat32, Nullable: true},
 		{Name: "null_float", Type: field.TypeFloat64, Nullable: true},
 		{Name: "role", Type: field.TypeEnum, Enums: []string{"ADMIN", "OWNER", "USER", "READ", "WRITE"}, Default: "READ"},
-		{Name: "mac", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "macaddr"}},
+		{Name: "mac", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"gremlin": "varchar", "postgres": "macaddr"}},
 		{Name: "uuid", Type: field.TypeUUID, Nullable: true},
 		{Name: "file_field", Type: field.TypeInt, Nullable: true},
 	}

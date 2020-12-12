@@ -137,6 +137,7 @@ func (FieldType) Fields() []ent.Field {
 			GoType(&MAC{}).
 			SchemaType(map[string]string{
 				dialect.Postgres: "macaddr",
+				dialect.Gremlin:  "varchar",
 			}).
 			Validate(func(s string) error {
 				_, err := net.ParseMAC(s)

@@ -90,6 +90,8 @@ func NewMigrate(d dialect.Driver, opts ...MigrateOption) (*Migrate, error) {
 		m.sqlDialect = &SQLite{Driver: d, WithForeignKeys: m.withForeignKeys}
 	case dialect.Postgres:
 		m.sqlDialect = &Postgres{Driver: d}
+	case dialect.Cockroach:
+		m.sqlDialect = &Cockroach{Driver: d}
 	default:
 		return nil, fmt.Errorf("sql/schema: unsupported dialect %q", d.Dialect())
 	}

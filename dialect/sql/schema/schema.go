@@ -257,6 +257,8 @@ func (c *Column) defaultValue(b *sql.ColumnBuilder) {
 		switch v := c.Default.(type) {
 		case bool:
 			attr += strconv.FormatBool(v)
+		case Raw:
+			attr += fmt.Sprint(v)
 		case string:
 			// Escape single quote by replacing each with 2.
 			attr += fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
@@ -266,6 +268,8 @@ func (c *Column) defaultValue(b *sql.ColumnBuilder) {
 		b.Attr(attr)
 	}
 }
+
+type Raw string
 
 // supportDefault reports if the column type supports default value.
 func (c Column) supportDefault() bool {
