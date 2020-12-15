@@ -41,6 +41,7 @@ func ({{ $receiver }} *{{ $builder }}) createSpec() (*{{ $.Name }}, *sqlgraph.Cr
 				Type: field.{{ $.ID.Type.ConstName }},
 				Column: {{ $.Package }}.{{ $.ID.Constant }},
 			},
+			Upsert: {{ $receiver }}.upsert,
 		}
 	)
 	{{- if $.ID.UserDefined }}

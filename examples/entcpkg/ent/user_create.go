@@ -20,6 +20,7 @@ type UserCreate struct {
 	config
 	mutation *UserMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -62,6 +63,20 @@ func (uc *UserCreate) Save(ctx context.Context) (*User, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (uc *UserCreate) SetUpdateOnConflict(updateOnConflict bool) *UserCreate {
+	uc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		uc.mutation.op = OpUpsert
+	} else {
+		uc.mutation.op = OpCreate
+	}
+
+	return uc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (uc *UserCreate) SaveX(ctx context.Context) *User {
 	v, err := uc.Save(ctx)
@@ -98,6 +113,7 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: user.FieldID,
 			},
+			Upsert: uc.upsert,
 		}
 	)
 	return _node, _spec

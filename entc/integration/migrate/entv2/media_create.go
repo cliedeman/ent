@@ -20,6 +20,7 @@ type MediaCreate struct {
 	config
 	mutation *MediaMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetSource sets the source field.
@@ -90,6 +91,20 @@ func (mc *MediaCreate) Save(ctx context.Context) (*Media, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (mc *MediaCreate) SetUpdateOnConflict(updateOnConflict bool) *MediaCreate {
+	mc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		mc.mutation.op = OpUpsert
+	} else {
+		mc.mutation.op = OpCreate
+	}
+
+	return mc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (mc *MediaCreate) SaveX(ctx context.Context) *Media {
 	v, err := mc.Save(ctx)
@@ -126,6 +141,7 @@ func (mc *MediaCreate) createSpec() (*Media, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: media.FieldID,
 			},
+			Upsert: mc.upsert,
 		}
 	)
 	if value, ok := mc.mutation.Source(); ok {

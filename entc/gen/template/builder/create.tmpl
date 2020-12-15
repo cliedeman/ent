@@ -26,6 +26,7 @@ type {{ $builder }} struct {
 	config
 	mutation *{{  $.MutationName }}
 	hooks []Hook
+	upsert bool
 }
 
 {{ with extend $ "Builder" $builder }}
@@ -68,6 +69,20 @@ func ({{ $receiver }} *{{ $builder }}) Save(ctx context.Context) (*{{ $.Name }},
 		}
 	}
 	return node, err
+}
+
+// SetUpdateOnConflict marks this query as an upsert
+func ({{ $receiver }} *{{ $builder }}) SetUpdateOnConflict(updateOnConflict bool) *{{ $builder }} {
+	{{ $receiver }}.upsert = updateOnConflict
+
+    // TODO: mutating the operation is probably not correct
+    if updateOnConflict {
+        {{ $receiver }}.mutation.op = OpUpsert
+    } else {
+        {{ $receiver }}.mutation.op = OpCreate
+    }
+
+	return {{ $receiver }}
 }
 
 // SaveX calls Save and panics if Save returns an error.

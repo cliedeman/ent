@@ -25,6 +25,7 @@ const (
 	OpDeleteOne = ent.OpDeleteOne
 	OpUpdate    = ent.OpUpdate
 	OpUpdateOne = ent.OpUpdateOne
+	OpUpsert    = ent.OpUpsert
 
 	// Node types.
 	TypePet  = "Pet"

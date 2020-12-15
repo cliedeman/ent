@@ -332,6 +332,7 @@ type (
 		ID     *FieldSpec
 		Fields []*FieldSpec
 		Edges  []*EdgeSpec
+		Upsert bool
 	}
 	// BatchCreateSpec holds the information for creating
 	// multiple nodes in the graph.
@@ -827,6 +828,11 @@ func (c *creator) node(ctx context.Context, tx dialect.ExecQuerier) error {
 		edges  = EdgeSpecs(c.Edges).GroupRel()
 		insert = c.builder.Insert(c.Table).Default()
 	)
+
+	if c.Upsert {
+		insert.SetUpdateOnConflict(c.Upsert, c.ID.Column)
+	}
+
 	// Set and create the node.
 	if err := c.setTableColumns(insert, edges); err != nil {
 		return err

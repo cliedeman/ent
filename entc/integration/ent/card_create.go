@@ -24,6 +24,7 @@ type CardCreate struct {
 	config
 	mutation *CardMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetCreateTime sets the create_time field.
@@ -149,6 +150,20 @@ func (cc *CardCreate) Save(ctx context.Context) (*Card, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (cc *CardCreate) SetUpdateOnConflict(updateOnConflict bool) *CardCreate {
+	cc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		cc.mutation.op = OpUpsert
+	} else {
+		cc.mutation.op = OpCreate
+	}
+
+	return cc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (cc *CardCreate) SaveX(ctx context.Context) *Card {
 	v, err := cc.Save(ctx)
@@ -216,6 +231,7 @@ func (cc *CardCreate) createSpec() (*Card, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: card.FieldID,
 			},
+			Upsert: cc.upsert,
 		}
 	)
 	if value, ok := cc.mutation.CreateTime(); ok {

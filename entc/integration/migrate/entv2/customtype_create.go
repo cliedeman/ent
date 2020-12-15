@@ -20,6 +20,7 @@ type CustomTypeCreate struct {
 	config
 	mutation *CustomTypeMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetCustom sets the custom field.
@@ -76,6 +77,20 @@ func (ctc *CustomTypeCreate) Save(ctx context.Context) (*CustomType, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (ctc *CustomTypeCreate) SetUpdateOnConflict(updateOnConflict bool) *CustomTypeCreate {
+	ctc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		ctc.mutation.op = OpUpsert
+	} else {
+		ctc.mutation.op = OpCreate
+	}
+
+	return ctc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (ctc *CustomTypeCreate) SaveX(ctx context.Context) *CustomType {
 	v, err := ctc.Save(ctx)
@@ -112,6 +127,7 @@ func (ctc *CustomTypeCreate) createSpec() (*CustomType, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: customtype.FieldID,
 			},
+			Upsert: ctc.upsert,
 		}
 	)
 	if value, ok := ctc.mutation.Custom(); ok {

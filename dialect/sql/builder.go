@@ -615,11 +615,13 @@ func (d *DropIndexBuilder) Query() (string, []interface{}) {
 // InsertBuilder is a builder for `INSERT INTO` statement.
 type InsertBuilder struct {
 	Builder
-	table     string
-	columns   []string
-	defaults  string
-	returning []string
-	values    [][]interface{}
+	table             string
+	columns           []string
+	defaults          string
+	returning         []string
+	values            [][]interface{}
+	upsert            bool
+	upsertIndexColumn string
 }
 
 // Insert creates a builder for the `INSERT INTO` statement.
@@ -672,6 +674,12 @@ func (i *InsertBuilder) Returning(columns ...string) *InsertBuilder {
 	return i
 }
 
+func (i *InsertBuilder) SetUpdateOnConflict(upsert bool, indexColumn string) *InsertBuilder {
+	i.upsert = upsert
+	i.upsertIndexColumn = indexColumn
+	return i
+}
+
 // Query returns query representation of an `INSERT INTO` statement.
 func (i *InsertBuilder) Query() (string, []interface{}) {
 	i.WriteString("INSERT INTO ")
@@ -696,6 +704,32 @@ func (i *InsertBuilder) Query() (string, []interface{}) {
 		i.WriteString(" RETURNING ")
 		i.IdentComma(i.returning...)
 	}
+
+	if i.upsert {
+		switch i.Dialect() {
+		case dialect.Postgres, dialect.SQLite:
+			i.WriteString(" ON CONFLICT (")
+			i.WriteString(i.Quote(i.upsertIndexColumn))
+			i.WriteString(") DO UPDATE SET ")
+		case dialect.MySQL:
+			i.WriteString(" ON DUPLICATE KEY UPDATE ")
+		}
+
+		for j, c := range i.columns {
+			if j > 0 {
+				i.Comma()
+			}
+			i.Ident(c).WriteString(" = ")
+			// TODO: handle multiple
+			switch v := i.values[0][j].(type) {
+			case Querier:
+				i.Join(v)
+			default:
+				i.Arg(v)
+			}
+		}
+	}
+
 	return i.String(), i.args
 }
 

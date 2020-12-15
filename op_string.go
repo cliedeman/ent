@@ -13,6 +13,7 @@ func _() {
 	_ = x[OpUpdateOne-4]
 	_ = x[OpDelete-8]
 	_ = x[OpDeleteOne-16]
+	_ = x[OpUpsert-32]
 }
 
 const (
@@ -20,6 +21,7 @@ const (
 	_Op_name_1 = "OpUpdateOne"
 	_Op_name_2 = "OpDelete"
 	_Op_name_3 = "OpDeleteOne"
+	_Op_name_4 = "OpUpsert"
 )
 
 var (
@@ -37,6 +39,8 @@ func (i Op) String() string {
 		return _Op_name_2
 	case i == 16:
 		return _Op_name_3
+	case i == 32:
+		return _Op_name_4
 	default:
 		return "Op(" + strconv.FormatInt(int64(i), 10) + ")"
 	}

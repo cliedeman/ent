@@ -21,6 +21,7 @@ type TenantCreate struct {
 	config
 	mutation *TenantMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetName sets the name field.
@@ -69,6 +70,20 @@ func (tc *TenantCreate) Save(ctx context.Context) (*Tenant, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (tc *TenantCreate) SetUpdateOnConflict(updateOnConflict bool) *TenantCreate {
+	tc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		tc.mutation.op = OpUpsert
+	} else {
+		tc.mutation.op = OpCreate
+	}
+
+	return tc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (tc *TenantCreate) SaveX(ctx context.Context) *Tenant {
 	v, err := tc.Save(ctx)
@@ -113,6 +128,7 @@ func (tc *TenantCreate) createSpec() (*Tenant, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: tenant.FieldID,
 			},
+			Upsert: tc.upsert,
 		}
 	)
 	if value, ok := tc.mutation.Name(); ok {

@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/facebook/ent/entc/integration/customid/ent/car"
 	"net"
 	"strconv"
 	"testing"
@@ -45,6 +46,7 @@ func TestMySQL(t *testing.T) {
 			err = client.Schema.Create(context.Background())
 			require.NoError(t, err)
 			CustomID(t, client)
+			Upsert(t, client)
 		})
 	}
 }
@@ -65,7 +67,8 @@ func TestPostgres(t *testing.T) {
 			defer client.Close()
 			err = client.Schema.Create(context.Background())
 			require.NoError(t, err)
-			CustomID(t, client)
+			// CustomID(t, client)
+			Upsert(t, client)
 		})
 	}
 }
@@ -75,7 +78,8 @@ func TestSQLite(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 	require.NoError(t, client.Schema.Create(context.Background()))
-	CustomID(t, client)
+	// CustomID(t, client)
+	Upsert(t, client)
 }
 
 func CustomID(t *testing.T, client *ent.Client) {
@@ -147,4 +151,15 @@ func CustomID(t *testing.T, client *ent.Client) {
 	).SaveX(ctx)
 	require.Equal(t, u1, blobs[0].ID)
 	require.Equal(t, u2, blobs[1].ID)
+}
+
+func Upsert(t *testing.T, client *ent.Client) {
+	ctx := context.Background()
+	nat := client.Car.Create().SetModel("ModelA").SaveX(ctx)
+	require.Equal(t, 1, nat.ID)
+	// TODO: should this rather be  client.Car.Upsert().SetID(1).SetModel("ModelB").SaveX(ctx)
+	client.Car.Create().SetID(1).SetModel("ModelB").SetUpdateOnConflict(true).SaveX(ctx)
+
+	c := client.Car.Query().Where(car.ID(1)).OnlyX(ctx)
+	require.Equal(t, c.Model, "ModelB")
 }

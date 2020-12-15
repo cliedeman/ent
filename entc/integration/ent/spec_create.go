@@ -21,6 +21,7 @@ type SpecCreate struct {
 	config
 	mutation *SpecMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // AddCardIDs adds the card edge to Card by ids.
@@ -78,6 +79,20 @@ func (sc *SpecCreate) Save(ctx context.Context) (*Spec, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (sc *SpecCreate) SetUpdateOnConflict(updateOnConflict bool) *SpecCreate {
+	sc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		sc.mutation.op = OpUpsert
+	} else {
+		sc.mutation.op = OpCreate
+	}
+
+	return sc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (sc *SpecCreate) SaveX(ctx context.Context) *Spec {
 	v, err := sc.Save(ctx)
@@ -114,6 +129,7 @@ func (sc *SpecCreate) createSpec() (*Spec, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: spec.FieldID,
 			},
+			Upsert: sc.upsert,
 		}
 	)
 	if nodes := sc.mutation.CardIDs(); len(nodes) > 0 {

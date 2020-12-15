@@ -24,6 +24,7 @@ type FileTypeCreate struct {
 	config
 	mutation *FileTypeMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetName sets the name field.
@@ -114,6 +115,20 @@ func (ftc *FileTypeCreate) Save(ctx context.Context) (*FileType, error) {
 		}
 	}
 	return node, err
+}
+
+// SetUpdateOnConflict marks this query as an upsert
+func (ftc *FileTypeCreate) SetUpdateOnConflict(updateOnConflict bool) *FileTypeCreate {
+	ftc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		ftc.mutation.op = OpUpsert
+	} else {
+		ftc.mutation.op = OpCreate
+	}
+
+	return ftc
 }
 
 // SaveX calls Save and panics if Save returns an error.

@@ -357,6 +357,7 @@ const (
 	OpUpdateOne                // update one node.
 	OpDelete                   // delete nodes by predicate (if any).
 	OpDeleteOne                // delete one one.
+	OpUpsert                   // insert or update
 )
 
 // Is reports whether o is match the given operation.

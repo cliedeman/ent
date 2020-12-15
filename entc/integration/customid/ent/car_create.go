@@ -22,6 +22,7 @@ type CarCreate struct {
 	config
 	mutation *CarMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetBeforeID sets the before_id field.
@@ -123,6 +124,20 @@ func (cc *CarCreate) Save(ctx context.Context) (*Car, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (cc *CarCreate) SetUpdateOnConflict(updateOnConflict bool) *CarCreate {
+	cc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		cc.mutation.op = OpUpsert
+	} else {
+		cc.mutation.op = OpCreate
+	}
+
+	return cc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (cc *CarCreate) SaveX(ctx context.Context) *Car {
 	v, err := cc.Save(ctx)
@@ -179,6 +194,7 @@ func (cc *CarCreate) createSpec() (*Car, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: car.FieldID,
 			},
+			Upsert: cc.upsert,
 		}
 	)
 	if id, ok := cc.mutation.ID(); ok {

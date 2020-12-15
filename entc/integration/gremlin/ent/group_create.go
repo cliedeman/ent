@@ -26,6 +26,7 @@ type GroupCreate struct {
 	config
 	mutation *GroupMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetActive sets the active field.
@@ -177,6 +178,20 @@ func (gc *GroupCreate) Save(ctx context.Context) (*Group, error) {
 		}
 	}
 	return node, err
+}
+
+// SetUpdateOnConflict marks this query as an upsert
+func (gc *GroupCreate) SetUpdateOnConflict(updateOnConflict bool) *GroupCreate {
+	gc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		gc.mutation.op = OpUpsert
+	} else {
+		gc.mutation.op = OpCreate
+	}
+
+	return gc
 }
 
 // SaveX calls Save and panics if Save returns an error.

@@ -24,6 +24,7 @@ type UserCreate struct {
 	config
 	mutation *UserMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetOptionalInt sets the optional_int field.
@@ -370,6 +371,20 @@ func (uc *UserCreate) Save(ctx context.Context) (*User, error) {
 		}
 	}
 	return node, err
+}
+
+// SetUpdateOnConflict marks this query as an upsert
+func (uc *UserCreate) SetUpdateOnConflict(updateOnConflict bool) *UserCreate {
+	uc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		uc.mutation.op = OpUpsert
+	} else {
+		uc.mutation.op = OpCreate
+	}
+
+	return uc
 }
 
 // SaveX calls Save and panics if Save returns an error.

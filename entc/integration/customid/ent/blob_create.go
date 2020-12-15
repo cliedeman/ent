@@ -22,6 +22,7 @@ type BlobCreate struct {
 	config
 	mutation *BlobMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetUUID sets the uuid field.
@@ -111,6 +112,20 @@ func (bc *BlobCreate) Save(ctx context.Context) (*Blob, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (bc *BlobCreate) SetUpdateOnConflict(updateOnConflict bool) *BlobCreate {
+	bc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		bc.mutation.op = OpUpsert
+	} else {
+		bc.mutation.op = OpCreate
+	}
+
+	return bc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (bc *BlobCreate) SaveX(ctx context.Context) *Blob {
 	v, err := bc.Save(ctx)
@@ -160,6 +175,7 @@ func (bc *BlobCreate) createSpec() (*Blob, *sqlgraph.CreateSpec) {
 				Type:   field.TypeUUID,
 				Column: blob.FieldID,
 			},
+			Upsert: bc.upsert,
 		}
 	)
 	if id, ok := bc.mutation.ID(); ok {

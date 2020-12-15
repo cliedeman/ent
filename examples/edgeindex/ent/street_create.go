@@ -22,6 +22,7 @@ type StreetCreate struct {
 	config
 	mutation *StreetMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetName sets the name field.
@@ -89,6 +90,20 @@ func (sc *StreetCreate) Save(ctx context.Context) (*Street, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (sc *StreetCreate) SetUpdateOnConflict(updateOnConflict bool) *StreetCreate {
+	sc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		sc.mutation.op = OpUpsert
+	} else {
+		sc.mutation.op = OpCreate
+	}
+
+	return sc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (sc *StreetCreate) SaveX(ctx context.Context) *Street {
 	v, err := sc.Save(ctx)
@@ -128,6 +143,7 @@ func (sc *StreetCreate) createSpec() (*Street, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: street.FieldID,
 			},
+			Upsert: sc.upsert,
 		}
 	)
 	if value, ok := sc.mutation.Name(); ok {

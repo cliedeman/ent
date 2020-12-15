@@ -26,6 +26,7 @@ type PetCreate struct {
 	config
 	mutation *PetMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetName sets the name field.
@@ -116,6 +117,20 @@ func (pc *PetCreate) Save(ctx context.Context) (*Pet, error) {
 		}
 	}
 	return node, err
+}
+
+// SetUpdateOnConflict marks this query as an upsert
+func (pc *PetCreate) SetUpdateOnConflict(updateOnConflict bool) *PetCreate {
+	pc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		pc.mutation.op = OpUpsert
+	} else {
+		pc.mutation.op = OpCreate
+	}
+
+	return pc
 }
 
 // SaveX calls Save and panics if Save returns an error.

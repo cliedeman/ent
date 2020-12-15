@@ -25,6 +25,7 @@ type GroupInfoCreate struct {
 	config
 	mutation *GroupInfoMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetDesc sets the desc field.
@@ -101,6 +102,20 @@ func (gic *GroupInfoCreate) Save(ctx context.Context) (*GroupInfo, error) {
 		}
 	}
 	return node, err
+}
+
+// SetUpdateOnConflict marks this query as an upsert
+func (gic *GroupInfoCreate) SetUpdateOnConflict(updateOnConflict bool) *GroupInfoCreate {
+	gic.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		gic.mutation.op = OpUpsert
+	} else {
+		gic.mutation.op = OpCreate
+	}
+
+	return gic
 }
 
 // SaveX calls Save and panics if Save returns an error.

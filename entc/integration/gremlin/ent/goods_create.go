@@ -21,6 +21,7 @@ type GoodsCreate struct {
 	config
 	mutation *GoodsMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // Mutation returns the GoodsMutation object of the builder.
@@ -61,6 +62,20 @@ func (gc *GoodsCreate) Save(ctx context.Context) (*Goods, error) {
 		}
 	}
 	return node, err
+}
+
+// SetUpdateOnConflict marks this query as an upsert
+func (gc *GoodsCreate) SetUpdateOnConflict(updateOnConflict bool) *GoodsCreate {
+	gc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		gc.mutation.op = OpUpsert
+	} else {
+		gc.mutation.op = OpCreate
+	}
+
+	return gc
 }
 
 // SaveX calls Save and panics if Save returns an error.

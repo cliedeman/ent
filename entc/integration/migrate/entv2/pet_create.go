@@ -21,6 +21,7 @@ type PetCreate struct {
 	config
 	mutation *PetMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetOwnerID sets the owner edge to User by id.
@@ -82,6 +83,20 @@ func (pc *PetCreate) Save(ctx context.Context) (*Pet, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (pc *PetCreate) SetUpdateOnConflict(updateOnConflict bool) *PetCreate {
+	pc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		pc.mutation.op = OpUpsert
+	} else {
+		pc.mutation.op = OpCreate
+	}
+
+	return pc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (pc *PetCreate) SaveX(ctx context.Context) *Pet {
 	v, err := pc.Save(ctx)
@@ -118,6 +133,7 @@ func (pc *PetCreate) createSpec() (*Pet, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: pet.FieldID,
 			},
+			Upsert: pc.upsert,
 		}
 	)
 	if nodes := pc.mutation.OwnerIDs(); len(nodes) > 0 {

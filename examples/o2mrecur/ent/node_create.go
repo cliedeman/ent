@@ -21,6 +21,7 @@ type NodeCreate struct {
 	config
 	mutation *NodeMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetValue sets the value field.
@@ -103,6 +104,20 @@ func (nc *NodeCreate) Save(ctx context.Context) (*Node, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (nc *NodeCreate) SetUpdateOnConflict(updateOnConflict bool) *NodeCreate {
+	nc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		nc.mutation.op = OpUpsert
+	} else {
+		nc.mutation.op = OpCreate
+	}
+
+	return nc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (nc *NodeCreate) SaveX(ctx context.Context) *Node {
 	v, err := nc.Save(ctx)
@@ -142,6 +157,7 @@ func (nc *NodeCreate) createSpec() (*Node, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: node.FieldID,
 			},
+			Upsert: nc.upsert,
 		}
 	)
 	if value, ok := nc.mutation.Value(); ok {

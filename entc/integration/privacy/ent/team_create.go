@@ -23,6 +23,7 @@ type TeamCreate struct {
 	config
 	mutation *TeamMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetName sets the name field.
@@ -101,6 +102,20 @@ func (tc *TeamCreate) Save(ctx context.Context) (*Team, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (tc *TeamCreate) SetUpdateOnConflict(updateOnConflict bool) *TeamCreate {
+	tc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		tc.mutation.op = OpUpsert
+	} else {
+		tc.mutation.op = OpCreate
+	}
+
+	return tc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (tc *TeamCreate) SaveX(ctx context.Context) *Team {
 	v, err := tc.Save(ctx)
@@ -145,6 +160,7 @@ func (tc *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: team.FieldID,
 			},
+			Upsert: tc.upsert,
 		}
 	)
 	if value, ok := tc.mutation.Name(); ok {

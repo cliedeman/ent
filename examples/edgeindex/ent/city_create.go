@@ -22,6 +22,7 @@ type CityCreate struct {
 	config
 	mutation *CityMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetName sets the name field.
@@ -85,6 +86,20 @@ func (cc *CityCreate) Save(ctx context.Context) (*City, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (cc *CityCreate) SetUpdateOnConflict(updateOnConflict bool) *CityCreate {
+	cc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		cc.mutation.op = OpUpsert
+	} else {
+		cc.mutation.op = OpCreate
+	}
+
+	return cc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (cc *CityCreate) SaveX(ctx context.Context) *City {
 	v, err := cc.Save(ctx)
@@ -124,6 +139,7 @@ func (cc *CityCreate) createSpec() (*City, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: city.FieldID,
 			},
+			Upsert: cc.upsert,
 		}
 	)
 	if value, ok := cc.mutation.Name(); ok {

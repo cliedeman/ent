@@ -28,6 +28,7 @@ type FieldTypeCreate struct {
 	config
 	mutation *FieldTypeMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetInt sets the int field.
@@ -601,6 +602,20 @@ func (ftc *FieldTypeCreate) Save(ctx context.Context) (*FieldType, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (ftc *FieldTypeCreate) SetUpdateOnConflict(updateOnConflict bool) *FieldTypeCreate {
+	ftc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		ftc.mutation.op = OpUpsert
+	} else {
+		ftc.mutation.op = OpCreate
+	}
+
+	return ftc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (ftc *FieldTypeCreate) SaveX(ctx context.Context) *FieldType {
 	v, err := ftc.Save(ctx)
@@ -693,6 +708,7 @@ func (ftc *FieldTypeCreate) createSpec() (*FieldType, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: fieldtype.FieldID,
 			},
+			Upsert: ftc.upsert,
 		}
 	)
 	if value, ok := ftc.mutation.Int(); ok {

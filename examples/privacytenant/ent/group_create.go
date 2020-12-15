@@ -23,6 +23,7 @@ type GroupCreate struct {
 	config
 	mutation *GroupMutation
 	hooks    []Hook
+	upsert   bool
 }
 
 // SetName sets the name field.
@@ -106,6 +107,20 @@ func (gc *GroupCreate) Save(ctx context.Context) (*Group, error) {
 	return node, err
 }
 
+// SetUpdateOnConflict marks this query as an upsert
+func (gc *GroupCreate) SetUpdateOnConflict(updateOnConflict bool) *GroupCreate {
+	gc.upsert = updateOnConflict
+
+	// TODO: mutating the operation is probably not correct
+	if updateOnConflict {
+		gc.mutation.op = OpUpsert
+	} else {
+		gc.mutation.op = OpCreate
+	}
+
+	return gc
+}
+
 // SaveX calls Save and panics if Save returns an error.
 func (gc *GroupCreate) SaveX(ctx context.Context) *Group {
 	v, err := gc.Save(ctx)
@@ -156,6 +171,7 @@ func (gc *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 				Type:   field.TypeInt,
 				Column: group.FieldID,
 			},
+			Upsert: gc.upsert,
 		}
 	)
 	if value, ok := gc.mutation.Name(); ok {
