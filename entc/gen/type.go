@@ -85,6 +85,8 @@ type (
 		// Annotations that were defined for the field in the schema.
 		// The mapping is from the Annotation.Name() to a JSON decoded object.
 		Annotations map[string]interface{}
+		// Comment used for godoc
+		Comment string
 	}
 
 	// Edge of a graph between two types.
@@ -202,6 +204,7 @@ func NewType(c *Config, schema *load.Schema) (*Type, error) {
 			Validators:    f.Validators,
 			UserDefined:   true,
 			Annotations:   f.Annotations,
+			Comment:       f.Comment,
 		}
 		if err := typ.checkField(tf, f); err != nil {
 			return nil, err
@@ -960,6 +963,16 @@ func (f Field) HasGoType() bool {
 // can be converted to basic type (string, int, etc).
 func (f Field) ConvertedToBasic() bool {
 	return !f.HasGoType() || f.BasicType("ident") != ""
+}
+
+// CommentOrDefault returns the user set comment or a default comment
+func (f Field) CommentOrDefault() string {
+	if f.Comment == "" {
+		return fmt.Sprintf(`%s holds the value of the "%s" field.`, f.StructField(), f.Name)
+	} else {
+		// TODO: split multiline
+		return f.Comment
+	}
 }
 
 var (

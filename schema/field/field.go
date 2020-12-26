@@ -229,7 +229,9 @@ func (b *stringBuilder) Immutable() *stringBuilder {
 }
 
 // Comment sets the comment of the field.
-func (b *stringBuilder) Comment(string) *stringBuilder {
+func (b *stringBuilder) Comment(c string) *stringBuilder {
+	// TODO: other builders
+	b.desc.Comment = c
 	return b
 }
 
@@ -899,6 +901,7 @@ type Descriptor struct {
 	Sensitive     bool                    // sensitive info string field.
 	SchemaType    map[string]string       // override the schema type.
 	Annotations   []schema.Annotation     // field annotations.
+	Comment       string                  // field godoc comment
 	err           error
 }
 
