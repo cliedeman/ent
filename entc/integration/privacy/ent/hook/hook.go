@@ -13,6 +13,19 @@ import (
 	"entgo.io/ent/entc/integration/privacy/ent"
 )
 
+// The SoftDeleteFunc type is an adapter to allow the use of ordinary
+// function as SoftDelete mutator.
+type SoftDeleteFunc func(context.Context, *ent.SoftDeleteMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SoftDeleteFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	mv, ok := m.(*ent.SoftDeleteMutation)
+	if !ok {
+		return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SoftDeleteMutation", m)
+	}
+	return f(ctx, mv)
+}
+
 // The TaskFunc type is an adapter to allow the use of ordinary
 // function as Task mutator.
 type TaskFunc func(context.Context, *ent.TaskMutation) (ent.Value, error)

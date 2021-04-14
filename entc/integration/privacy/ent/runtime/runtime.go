@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"entgo.io/ent/entc/integration/privacy/ent/schema"
+	"entgo.io/ent/entc/integration/privacy/ent/softdelete"
 	"entgo.io/ent/entc/integration/privacy/ent/task"
 	"entgo.io/ent/entc/integration/privacy/ent/team"
 	"entgo.io/ent/entc/integration/privacy/ent/user"
@@ -22,6 +23,26 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	softdeleteMixin := schema.SoftDelete{}.Mixin()
+	softdelete.Policy = privacy.NewPolicies(softdeleteMixin[0], schema.SoftDelete{})
+	softdelete.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := softdelete.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	softdeleteFields := schema.SoftDelete{}.Fields()
+	_ = softdeleteFields
+	// softdeleteDescName is the schema descriptor for name field.
+	softdeleteDescName := softdeleteFields[0].Descriptor()
+	// softdelete.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	softdelete.NameValidator = softdeleteDescName.Validators[0].(func(string) error)
+	// softdeleteDescActive is the schema descriptor for active field.
+	softdeleteDescActive := softdeleteFields[1].Descriptor()
+	// softdelete.DefaultActive holds the default value on creation for the active field.
+	softdelete.DefaultActive = softdeleteDescActive.Default.(bool)
 	taskMixin := schema.Task{}.Mixin()
 	task.Policy = privacy.NewPolicies(taskMixin[0], taskMixin[1], schema.Task{})
 	task.Hooks[0] = func(next ent.Mutator) ent.Mutator {

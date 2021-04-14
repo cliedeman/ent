@@ -13,6 +13,7 @@ import (
 
 	"entgo.io/ent/entc/integration/privacy/ent/migrate"
 
+	"entgo.io/ent/entc/integration/privacy/ent/softdelete"
 	"entgo.io/ent/entc/integration/privacy/ent/task"
 	"entgo.io/ent/entc/integration/privacy/ent/team"
 	"entgo.io/ent/entc/integration/privacy/ent/user"
@@ -27,6 +28,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// SoftDelete is the client for interacting with the SoftDelete builders.
+	SoftDelete *SoftDeleteClient
 	// Task is the client for interacting with the Task builders.
 	Task *TaskClient
 	// Team is the client for interacting with the Team builders.
@@ -46,6 +49,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.SoftDelete = NewSoftDeleteClient(c.config)
 	c.Task = NewTaskClient(c.config)
 	c.Team = NewTeamClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -80,11 +84,12 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:    ctx,
-		config: cfg,
-		Task:   NewTaskClient(cfg),
-		Team:   NewTeamClient(cfg),
-		User:   NewUserClient(cfg),
+		ctx:        ctx,
+		config:     cfg,
+		SoftDelete: NewSoftDeleteClient(cfg),
+		Task:       NewTaskClient(cfg),
+		Team:       NewTeamClient(cfg),
+		User:       NewUserClient(cfg),
 	}, nil
 }
 
@@ -102,17 +107,18 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		config: cfg,
-		Task:   NewTaskClient(cfg),
-		Team:   NewTeamClient(cfg),
-		User:   NewUserClient(cfg),
+		config:     cfg,
+		SoftDelete: NewSoftDeleteClient(cfg),
+		Task:       NewTaskClient(cfg),
+		Team:       NewTeamClient(cfg),
+		User:       NewUserClient(cfg),
 	}, nil
 }
 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Task.
+//		SoftDelete.
 //		Query().
 //		Count(ctx)
 //
@@ -135,9 +141,99 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
+	c.SoftDelete.Use(hooks...)
 	c.Task.Use(hooks...)
 	c.Team.Use(hooks...)
 	c.User.Use(hooks...)
+}
+
+// SoftDeleteClient is a client for the SoftDelete schema.
+type SoftDeleteClient struct {
+	config
+}
+
+// NewSoftDeleteClient returns a client for the SoftDelete from the given config.
+func NewSoftDeleteClient(c config) *SoftDeleteClient {
+	return &SoftDeleteClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `softdelete.Hooks(f(g(h())))`.
+func (c *SoftDeleteClient) Use(hooks ...Hook) {
+	c.hooks.SoftDelete = append(c.hooks.SoftDelete, hooks...)
+}
+
+// Create returns a create builder for SoftDelete.
+func (c *SoftDeleteClient) Create() *SoftDeleteCreate {
+	mutation := newSoftDeleteMutation(c.config, OpCreate)
+	return &SoftDeleteCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SoftDelete entities.
+func (c *SoftDeleteClient) CreateBulk(builders ...*SoftDeleteCreate) *SoftDeleteCreateBulk {
+	return &SoftDeleteCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SoftDelete.
+func (c *SoftDeleteClient) Update() *SoftDeleteUpdate {
+	mutation := newSoftDeleteMutation(c.config, OpUpdate)
+	return &SoftDeleteUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SoftDeleteClient) UpdateOne(sd *SoftDelete) *SoftDeleteUpdateOne {
+	mutation := newSoftDeleteMutation(c.config, OpUpdateOne, withSoftDelete(sd))
+	return &SoftDeleteUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SoftDeleteClient) UpdateOneID(id int) *SoftDeleteUpdateOne {
+	mutation := newSoftDeleteMutation(c.config, OpUpdateOne, withSoftDeleteID(id))
+	return &SoftDeleteUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SoftDelete.
+func (c *SoftDeleteClient) Delete() *SoftDeleteDelete {
+	mutation := newSoftDeleteMutation(c.config, OpDelete)
+	return &SoftDeleteDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a delete builder for the given entity.
+func (c *SoftDeleteClient) DeleteOne(sd *SoftDelete) *SoftDeleteDeleteOne {
+	return c.DeleteOneID(sd.ID)
+}
+
+// DeleteOneID returns a delete builder for the given id.
+func (c *SoftDeleteClient) DeleteOneID(id int) *SoftDeleteDeleteOne {
+	builder := c.Delete().Where(softdelete.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SoftDeleteDeleteOne{builder}
+}
+
+// Query returns a query builder for SoftDelete.
+func (c *SoftDeleteClient) Query() *SoftDeleteQuery {
+	return &SoftDeleteQuery{config: c.config}
+}
+
+// Get returns a SoftDelete entity by its id.
+func (c *SoftDeleteClient) Get(ctx context.Context, id int) (*SoftDelete, error) {
+	return c.Query().Where(softdelete.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SoftDeleteClient) GetX(ctx context.Context, id int) *SoftDelete {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SoftDeleteClient) Hooks() []Hook {
+	hooks := c.hooks.SoftDelete
+	return append(hooks[:len(hooks):len(hooks)], softdelete.Hooks[:]...)
 }
 
 // TaskClient is a client for the Task schema.

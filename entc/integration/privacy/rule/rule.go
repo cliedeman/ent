@@ -6,6 +6,7 @@ package rule
 
 import (
 	"context"
+	"entgo.io/ent/entql"
 	"fmt"
 	"sync"
 
@@ -103,6 +104,21 @@ func FilterTeamRule() privacy.QueryRule {
 			return privacy.Denyf("unexpected filter type %T", f)
 		}
 		tf.WhereHasTeamsWith(team.NameIn(teams...))
+		return privacy.Skip
+	})
+}
+
+// FilterInactiveRule is a query rule that filters out inactive records.
+func FilterInactiveRule() privacy.QueryRule {
+	type SoftDeleteFilter interface {
+		WhereActive(p entql.BoolP)
+	}
+	return privacy.FilterFunc(func(ctx context.Context, f privacy.Filter) error {
+		tf, ok := f.(SoftDeleteFilter)
+		if !ok {
+			return privacy.Denyf("unexpected filter type %T", f)
+		}
+		tf.WhereActive(entql.BoolEQ(true))
 		return privacy.Skip
 	})
 }

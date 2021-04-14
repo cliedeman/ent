@@ -12,6 +12,19 @@ import (
 )
 
 var (
+	// SoftDeletesColumns holds the columns for the "soft_deletes" table.
+	SoftDeletesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "active", Type: field.TypeBool, Default: true},
+	}
+	// SoftDeletesTable holds the schema information for the "soft_deletes" table.
+	SoftDeletesTable = &schema.Table{
+		Name:        "soft_deletes",
+		Columns:     SoftDeletesColumns,
+		PrimaryKey:  []*schema.Column{SoftDeletesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{},
+	}
 	// TasksColumns holds the columns for the "tasks" table.
 	TasksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -112,6 +125,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		SoftDeletesTable,
 		TasksTable,
 		TeamsTable,
 		UsersTable,

@@ -79,4 +79,14 @@ func TestPrivacyRules(t *testing.T) {
 	// Update description is allow for other users in the team.
 	task3.Update().SetDescription("boring description").SaveX(natctx)
 	task3.Update().SetDescription("boring description").SaveX(a8mctx)
+
+	// Soft Delete
+	client.SoftDelete.Create().SetName("Alpha").Save(a8mctx)
+	client.SoftDelete.Create().SetName("Beta").SetActive(false).Save(a8mctx)
+	client.SoftDelete.Create().SetName("Gamma").SetActive(false).Save(a8mctx)
+
+	softDeletes := client.SoftDelete.Query().AllX(a8mctx)
+	require.Equal(t, len(softDeletes), 1)
+	softDeletes = client.SoftDelete.Query().AllX(privacy.DecisionContext(a8mctx, privacy.Allow))
+	require.Equal(t, len(softDeletes), 3)
 }

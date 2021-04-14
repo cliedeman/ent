@@ -169,6 +169,30 @@ func DenyMutationOperationRule(op ent.Op) MutationRule {
 	return OnMutationOperation(rule, op)
 }
 
+// The SoftDeleteQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type SoftDeleteQueryRuleFunc func(context.Context, *ent.SoftDeleteQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f SoftDeleteQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SoftDeleteQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.SoftDeleteQuery", q)
+}
+
+// The SoftDeleteMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type SoftDeleteMutationRuleFunc func(context.Context, *ent.SoftDeleteMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f SoftDeleteMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.SoftDeleteMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.SoftDeleteMutation", m)
+}
+
 // The TaskQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type TaskQueryRuleFunc func(context.Context, *ent.TaskQuery) error
@@ -276,6 +300,8 @@ var _ QueryMutationRule = FilterFunc(nil)
 
 func queryFilter(q ent.Query) (Filter, error) {
 	switch q := q.(type) {
+	case *ent.SoftDeleteQuery:
+		return q.Filter(), nil
 	case *ent.TaskQuery:
 		return q.Filter(), nil
 	case *ent.TeamQuery:
@@ -289,6 +315,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 
 func mutationFilter(m ent.Mutation) (Filter, error) {
 	switch m := m.(type) {
+	case *ent.SoftDeleteMutation:
+		return m.Filter(), nil
 	case *ent.TaskMutation:
 		return m.Filter(), nil
 	case *ent.TeamMutation:
