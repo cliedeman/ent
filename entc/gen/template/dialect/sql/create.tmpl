@@ -14,9 +14,7 @@ in the LICENSE file in the root directory of this source tree.
 func ({{ $receiver }} *{{ $builder }}) sqlSave(ctx context.Context) (*{{ $.Name }}, error) {
 	_node, _spec := {{ $receiver }}.createSpec()
 	if err := sqlgraph.CreateNode(ctx, {{ $receiver }}.driver, _spec); err != nil {
-		if cerr, ok := isSQLConstraintError(err); ok {
-			err = cerr
-		}
+		{{ template "dialect/sql/errors/mutate/interceptor" . }}
 		return nil, err
 	}
 	{{- if and $.ID.UserDefined (or $.ID.IsString $.ID.IsUUID) }}

@@ -26,3 +26,9 @@ func rollback(tx dialect.Tx, err error) error {
 	return err
 }
 {{ end }}
+
+{{ define "dialect/sql/errors/mutate/interceptor" -}}
+if cerr, ok := isSQLConstraintError(err); ok {
+    err = cerr
+}
+{{- end }}

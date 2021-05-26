@@ -124,7 +124,8 @@ func (pc *PetCreate) check() error {
 func (pc *PetCreate) sqlSave(ctx context.Context) (*Pet, error) {
 	_node, _spec := pc.createSpec()
 	if err := sqlgraph.CreateNode(ctx, pc.driver, _spec); err != nil {
-		if cerr, ok := isSQLConstraintError(err); ok {
+		// Testing
+		if cerr, ok := isExtendedSQLConstraintError(err); ok {
 			err = cerr
 		}
 		return nil, err

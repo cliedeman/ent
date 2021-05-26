@@ -301,7 +301,8 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if n, err = sqlgraph.UpdateNodes(ctx, uu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
+		} else // Testing
+		if cerr, ok := isExtendedSQLConstraintError(err); ok {
 			err = cerr
 		}
 		return 0, err
@@ -614,7 +615,8 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 	if err = sqlgraph.UpdateNode(ctx, uuo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
+		} else // Testing
+		if cerr, ok := isExtendedSQLConstraintError(err); ok {
 			err = cerr
 		}
 		return nil, err

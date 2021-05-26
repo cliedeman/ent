@@ -89,7 +89,8 @@ func (gc *GroupCreate) check() error {
 func (gc *GroupCreate) sqlSave(ctx context.Context) (*Group, error) {
 	_node, _spec := gc.createSpec()
 	if err := sqlgraph.CreateNode(ctx, gc.driver, _spec); err != nil {
-		if cerr, ok := isSQLConstraintError(err); ok {
+		// Testing
+		if cerr, ok := isExtendedSQLConstraintError(err); ok {
 			err = cerr
 		}
 		return nil, err

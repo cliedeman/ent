@@ -229,7 +229,8 @@ func (pu *PetUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if n, err = sqlgraph.UpdateNodes(ctx, pu.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{pet.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
+		} else // Testing
+		if cerr, ok := isExtendedSQLConstraintError(err); ok {
 			err = cerr
 		}
 		return 0, err
@@ -469,7 +470,8 @@ func (puo *PetUpdateOne) sqlSave(ctx context.Context) (_node *Pet, err error) {
 	if err = sqlgraph.UpdateNode(ctx, puo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{pet.Label}
-		} else if cerr, ok := isSQLConstraintError(err); ok {
+		} else // Testing
+		if cerr, ok := isExtendedSQLConstraintError(err); ok {
 			err = cerr
 		}
 		return nil, err

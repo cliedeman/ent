@@ -120,7 +120,8 @@ func (uc *UserCreate) check() error {
 func (uc *UserCreate) sqlSave(ctx context.Context) (*User, error) {
 	_node, _spec := uc.createSpec()
 	if err := sqlgraph.CreateNode(ctx, uc.driver, _spec); err != nil {
-		if cerr, ok := isSQLConstraintError(err); ok {
+		// Testing
+		if cerr, ok := isExtendedSQLConstraintError(err); ok {
 			err = cerr
 		}
 		return nil, err
